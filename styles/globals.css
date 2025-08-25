@@ -1,0 +1,41 @@
+/* Import Tailwind's base styles, components, and utilities */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Scandinavian theme: airy layout, clean typography, soft background */
+/* NOTE: use standard Tailwind colors (gray / sky) so utilities exist with default config */
+body {
+  @apply bg-gray-50 text-gray-900 font-sans antialiased;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+/* Headings: clean, bold, spaced */
+/* Use sky-600 as the "Labora" accent color from Tailwind default palette */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  @apply font-bold tracking-tight text-sky-600;
+}
+
+/* Card-like containers */
+.card {
+  @apply bg-white rounded-lg shadow p-6;
+}
+
+/* Buttons: use Tailwind sky colors for primary action */
+.btn {
+  @apply bg-sky-600 text-white rounded-lg px-4 py-2 font-semibold transition hover:bg-sky-700;
+}
+
+/* Inputs: soft border, padding, rounded; focus ring uses sky color */
+input,
+textarea,
+select {
+  @apply border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-500;
+}

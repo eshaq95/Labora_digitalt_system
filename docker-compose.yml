@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16
+    container_name: labora_pg
+    restart: always
+    environment:
+      POSTGRES_USER: labora
+      POSTGRES_PASSWORD: labora
+      POSTGRES_DB: labora
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

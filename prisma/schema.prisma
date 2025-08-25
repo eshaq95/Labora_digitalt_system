@@ -1,0 +1,21 @@
+// The generator block tells Prisma to generate the client library for database access.
+generator client {
+  provider = "prisma-client-js"
+}
+
+// The datasource block configures the database connection.
+// It uses PostgreSQL and reads the connection string from the DATABASE_URL environment variable.
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// The Product model defines a table in the database.
+// - id: Unique identifier for each product, generated automatically.
+// - name: Name of the product.
+// - stock: Number of items in stock.
+model Product {
+  id    String @id @default(cuid())
+  name  String
+  stock Int
+}

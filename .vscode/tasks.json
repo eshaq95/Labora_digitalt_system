@@ -1,0 +1,14 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "dev", "type": "shell", "command": "pnpm dev" },
+    { "label": "lint", "type": "shell", "command": "pnpm lint" },
+    {
+      "label": "format",
+      "type": "shell",
+      "command": "pnpm prettier --write ."
+    },
+    { "label": "db:up", "type": "shell", "command": "docker compose up -d" },
+    { "label": "db:studio", "type": "shell", "command": "pnpm prisma studio" }
+  ]
+}
