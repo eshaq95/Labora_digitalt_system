@@ -3,20 +3,22 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:pointer-events-none h-9 px-4',
+  'inline-flex items-center justify-center font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none relative overflow-hidden',
   {
     variants: {
       variant: {
-        default: 'bg-sky-600 text-white hover:bg-sky-700',
-        outline:
-          'border border-gray-300 bg-white hover:bg-gray-50 text-gray-900',
-        ghost: 'hover:bg-gray-100 text-gray-900',
-        danger: 'border border-red-200 text-red-600 hover:bg-red-50',
+        default: 'bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg',
+        outline: 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm hover:shadow-md',
+        ghost: 'text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800',
+        danger: 'bg-red-600 hover:bg-red-700 text-white shadow-md hover:shadow-lg',
+        success: 'bg-green-600 hover:bg-green-700 text-white shadow-md hover:shadow-lg',
+        link: 'text-blue-600 hover:text-blue-700 underline-offset-4 hover:underline p-0 h-auto',
       },
       size: {
-        sm: 'h-8 px-3 text-sm',
-        md: 'h-9 px-4',
-        lg: 'h-10 px-5 text-base',
+        sm: 'h-9 px-3 text-sm rounded-md',
+        md: 'h-10 px-4 text-sm rounded-lg',
+        lg: 'h-12 px-6 text-base rounded-xl',
+        xl: 'h-14 px-8 text-lg rounded-xl',
       },
     },
     defaultVariants: { variant: 'default', size: 'md' },
@@ -26,11 +28,13 @@ const buttonVariants = cva(
 export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> &
   VariantProps<typeof buttonVariants>
 
-export function Button({ className, variant, size, ...props }: ButtonProps) {
+export function Button({ className, variant, size, children, ...props }: ButtonProps) {
   return (
     <button
       className={cn(buttonVariants({ variant, size }), className)}
       {...props}
-    />
+    >
+      {children}
+    </button>
   )
 }

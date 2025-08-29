@@ -10,12 +10,341 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// The Product model defines a table in the database.
-// - id: Unique identifier for each product, generated automatically.
-// - name: Name of the product.
-// - stock: Number of items in stock.
-model Product {
-  id    String @id @default(cuid())
-  name  String
-  stock Int
+// Core reference data
+
+enum LocationType {
+  MAIN
+  COLD
+  REMOTE
+  OTHER
+}
+
+enum Unit {
+  UNIT        // Stk
+  BOX         // Eske/Boks
+  PALLET      // Pall
+  BAG         // Pose
+  BOTTLE      // Flaske
+  TUBE        // Rør
+  PLATE       // Plate
+  KIT         // Sett
+  LITER       // Liter
+  GRAM        // Gram
+  KILOGRAM    // Kilo
+  MILLILITER  // ml
+  PACK        // Pakke
+  ROLL        // Rull
+}
+
+model Supplier {
+  id                     String   @id @default(cuid())
+  name                   String   @unique
+  shortCode              String?  @unique
+  website                String?  @db.Text
+  accountNumber          String?  @db.Text
+  contactName            String?  @db.Text
+  contactEmail           String?  @db.Text
+  contactPhone           String?  @db.Text
+  orderingMethod         String?  @db.Text
+  portalUsername         String?  @db.Text
+  portalPassword         String?  @db.Text
+  notes                  String?  @db.Text
+  
+  // Fraktoptimalisering (KRITISK for kostnadstyring)
+  freeShippingThreshold  Decimal? @db.Decimal(10, 2)  // Grense for gratis frakt
+  standardShippingCost   Decimal? @db.Decimal(10, 2)  // Standard fraktkostnad
+  shippingNotes          String?  @db.Text            // Spesielle betingelser
+  
+  // Bestillingsinstruksjoner (Forhindrer feil)
+  orderingInstructions   String?  @db.Text            // F.eks. "Husk fakturareferanse XXX"
+
+  items                  Item[]
+  supplierItems          SupplierItem[]  // Ny prisbok-relasjon
+  discounts             Discount[]
+  purchaseOrders         PurchaseOrder[]
+  receipts              Receipt[]
+
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+model Location {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  code      String?      @unique
+  type      LocationType @default(MAIN)
+  notes     String?      @db.Text
+
+  lots      InventoryLot[]
+  receiptLines ReceiptLine[]
+  defaultForItems Item[]  // Items that have this location as default
+
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}
+
+enum ItemCategory {
+  HMS
+  KJEMI
+  FISKEHELSE
+  KRYO
+  MOTTAK
+  MIKRO
+  ADMINISTRASJON
+  IT
+  FELLES
+  ANNET
+}
+
+model Department {
+  id        String @id @default(cuid())
+  name      String @unique
+  code      String @unique
+  
+  items     Item[]
+  orderLines PurchaseOrderLine[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Category {
+  id          String @id @default(cuid())
+  name        String @unique
+  code        String @unique
+  description String? @db.Text
+  
+  items       Item[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Koblingstabell for prisstyring og leverandørspesifikke detaljer
+model SupplierItem {
+  id                  String   @id @default(cuid())
+  
+  // Relasjoner
+  itemId              String
+  item                Item     @relation(fields: [itemId], references: [id])
+  supplierId          String
+  supplier            Supplier @relation(fields: [supplierId], references: [id])
+
+  // Identifikasjon hos leverandør
+  supplierPartNumber  String   @db.Text  // Leverandørens artikkelnummer (Best.nr) - Kritisk!
+  productUrl          String?  @db.Text  // Link til aktuelt produkt hos denne leverandøren
+
+  // Prisstruktur (VIKTIG: Bruk Decimal for valuta, ikke Float, for nøyaktighet)
+  listPrice           Decimal? @db.Decimal(10, 2)  // Veiledende listepris (før rabatt)
+  negotiatedPrice     Decimal  @db.Decimal(10, 2)  // Laboras faktiske pris (etter rabatt)
+  currency            String   @default("NOK")
+  
+  // Avtaler og Koder (Løser "Glemt kode"-problemet)
+  discountCodeRequired String? @db.Text  // Koden som MÅ oppgis (f.eks. "Ref: 09991274" hos Merck)
+  agreementReference  String?  @db.Text  // Referanse til avtalen (f.eks. "Labforum 2025")
+
+  // Vedlikehold og Gyldighet
+  priceValidUntil     DateTime? // For tidsbegrensede tilbud
+  lastVerifiedDate    DateTime @default(now()) @updatedAt // Når ble prisen sist bekreftet?
+  
+  // Metadata
+  isPrimarySupplier   Boolean  @default(false)  // Er dette hovedleverandøren for denne varen?
+  minimumOrderQty     Int?     // Minimum bestillingsantall
+  packSize           Int?      // Pakningsstørrelse
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([itemId, supplierId])
+  @@index([itemId])
+  @@index([supplierId])
+}
+
+model Item {
+  id              String       @id @default(cuid())
+  sku             String       @unique
+  name            String
+  description     String?      @db.Text
+  manufacturer    String?      @db.Text  // Produsent
+  
+  // Kategorisering (nye relasjoner)
+  category        ItemCategory @default(ANNET)
+  departmentId    String?
+  department      Department?  @relation(fields: [departmentId], references: [id])
+  categoryId      String?
+  categoryRef     Category?    @relation(fields: [categoryId], references: [id])
+  
+  // Enheter og mengder
+  unit            Unit         @default(UNIT)        // Lagerenhet
+  orderUnit       Unit?        // Bestillingsenhet
+  conversionFactor Int?        // Hvor mange lagerenheter per bestillingsenhet
+  contentPerPack  String?      @db.Text             // Enhet per pk (fra Excel)
+  
+  // Kun salgspris (innkjøpspris flyttet til SupplierItem)
+  salesPrice      Decimal?     @db.Decimal(10, 2)   // Pris ut til kunde
+  currency        String?      @default("NOK")
+  
+  // Lagerstyring
+  minStock        Int          @default(0)          // Minstebeholdning (alarm)
+  maxStock        Int?                              // Maksimum lagernivå
+  
+  // Sporingskrav (kritiske for lab)
+  requiresLotNumber Boolean    @default(false)      // Krever_Lotnummer
+  expiryTracking  Boolean      @default(false)      // Krever_Utløpsdato
+  hazardous       Boolean      @default(false)      // HMS_Sikkerhet
+  
+  // Tilleggsinformasjon
+  barcode         String?
+  storageTemp     String?      @db.Text
+  hmsCode         String?      @db.Text             // HMS-koder
+  notes           String?      @db.Text
+
+  // Relasjoner
+  supplierId      String?      // DEPRECATED: Bruk supplierItems i stedet
+  supplier        Supplier?    @relation(fields: [supplierId], references: [id])
+  
+  defaultLocationId String?
+  defaultLocation Location?    @relation(fields: [defaultLocationId], references: [id])
+
+  // Ny prisbok-relasjon
+  supplierItems   SupplierItem[]
+
+  lots            InventoryLot[]
+  orderLines      PurchaseOrderLine[]
+  receiptLines    ReceiptLine[]
+  discounts       Discount[]
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+model Discount {
+  id          String   @id @default(cuid())
+  itemId      String
+  item        Item     @relation(fields: [itemId], references: [id])
+  supplierId  String?
+  supplier    Supplier? @relation(fields: [supplierId], references: [id])
+  percent     Decimal? @db.Decimal(5, 2)
+  amount      Decimal? @db.Decimal(10, 2)
+  startsAt    DateTime @default(now())
+  endsAt      DateTime?
+}
+
+// Stock is tracked per lot/batch at a specific location, with optional expiry
+model InventoryLot {
+  id          String   @id @default(cuid())
+  itemId      String
+  item        Item     @relation(fields: [itemId], references: [id])
+  locationId  String
+  location    Location @relation(fields: [locationId], references: [id])
+  lotNumber   String?
+  expiryDate  DateTime?
+  quantity    Int      @default(0)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Unique constraint includes lotNumber and expiryDate for proper batch tracking
+  @@unique([itemId, locationId, lotNumber, expiryDate])
+  @@index([itemId, locationId])
+}
+
+enum OrderStatus {
+  REQUESTED    // Forespurt (ny forespørsel fra ansatt)
+  APPROVED     // Godkjent (leder har godkjent)
+  ORDERED      // Bestilt (sendt til leverandør)
+  PARTIAL      // Delvis mottatt
+  RECEIVED     // Fullført (alt mottatt)
+  CANCELLED    // Kansellert
+}
+
+enum Priority {
+  LOW          // Normal
+  MEDIUM       // Viktig
+  HIGH         // Haster
+  URGENT       // Kritisk
+}
+
+model PurchaseOrder {
+  id              String      @id @default(cuid())
+  orderNumber     String      @unique
+  supplierId      String
+  supplier        Supplier    @relation(fields: [supplierId], references: [id])
+  status          OrderStatus @default(REQUESTED)
+  priority        Priority    @default(MEDIUM)
+  
+  // Datoer og sporing
+  requestedBy     String?     // Hvem forespurte
+  requestedDate   DateTime    @default(now())  // Registrert dato
+  approvedBy      String?     // Hvem godkjente
+  approvedDate    DateTime?   // Godkjent dato
+  orderedDate     DateTime?   // Bestilt dato
+  expectedDate    DateTime?   // Forventes dato
+  
+  // Leverandør referanse
+  supplierOrderNumber String? @db.Text  // Ordrenr. fra leverandør
+  
+  notes           String?     @db.Text
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  lines           PurchaseOrderLine[]
+  receipts        Receipt[]
+}
+
+model PurchaseOrderLine {
+  id                String        @id @default(cuid())
+  orderId           String
+  order             PurchaseOrder @relation(fields: [orderId], references: [id])
+  itemId            String
+  item              Item          @relation(fields: [itemId], references: [id])
+  
+  // Bestilling
+  quantityOrdered   Int           // Antall_Bestilt
+  unitPrice         Decimal?      @db.Decimal(10, 2)  // Pris pk
+  currency          String?       @default("NOK")
+  
+  // Sporing av mottak
+  quantityReceived  Int           @default(0)  // Antall_Mottatt_Hittil
+  
+  // Avdeling som forespurte
+  departmentId      String?
+  requestedDepartment Department? @relation(fields: [departmentId], references: [id])
+  
+  notes             String?       @db.Text
+}
+
+model Receipt {
+  id          String   @id @default(cuid())
+  orderId     String?
+  order       PurchaseOrder? @relation(fields: [orderId], references: [id])
+  
+  // Mottaksinformasjon
+  receivedAt  DateTime @default(now())  // Mottatt_Dato
+  receivedBy  String?                   // Hvem registrerte
+  
+  // Leverandør referanse (hvis ikke koblet til bestilling)
+  supplierId  String?
+  supplier    Supplier? @relation(fields: [supplierId], references: [id])
+  
+  notes       String?  @db.Text
+
+  lines       ReceiptLine[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ReceiptLine {
+  id           String   @id @default(cuid())
+  receiptId    String
+  receipt      Receipt  @relation(fields: [receiptId], references: [id])
+  itemId       String
+  item         Item     @relation(fields: [itemId], references: [id])
+  locationId   String
+  location     Location @relation(fields: [locationId], references: [id])
+  lotNumber    String?
+  expiryDate   DateTime?
+  quantity     Int
 }

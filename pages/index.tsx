@@ -1,156 +1,285 @@
 import { useEffect, useState } from 'react'
-import { Button } from '@/components/ui/button'
-import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableCell,
-  TableBody,
-} from '@/components/ui/table'
-import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PageHeader } from '@/components/ui/page-header'
+import { motion } from 'framer-motion'
+import { AlertTriangle, Clock, TrendingUp, Package, Zap, BarChart3, Activity } from 'lucide-react'
 
-type Product = { id: string; name: string; stock: number }
+type AlertLow = { itemId: string; name: string; minStock: number; onHand: number }
+type Expiring = { id: string; item: { name: string } | null; location: { name: string } | null; expiryDate: string | null; quantity: number }
 
 export default function Home() {
-  const [products, setProducts] = useState<Product[]>([])
-  const [name, setName] = useState('')
-  const [stock, setStock] = useState<number>(0)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function load() {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/products', { cache: 'no-store' })
-      const data = await res.json()
-      setProducts(Array.isArray(data) ? data : [])
-    } catch (e: any) {
-      setError('Could not load products')
-    } finally {
-      setLoading(false)
-    }
-  }
+  const [low, setLow] = useState<AlertLow[]>([])
+  const [expiring, setExpiring] = useState<Expiring[]>([])
+  const [stats, setStats] = useState({ totalItems: 0, pendingOrders: 0 })
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    load()
+    ;(async () => {
+      try {
+        // Fetch alerts
+        const alertsRes = await fetch('/api/alerts', { cache: 'no-store' })
+        const alertsData = await alertsRes.json()
+        setLow(Array.isArray(alertsData.lowStock) ? alertsData.lowStock : [])
+        setExpiring(Array.isArray(alertsData.expiring) ? alertsData.expiring : [])
+        
+        // Fetch stats
+        const [itemsRes, ordersRes] = await Promise.all([
+          fetch('/api/items', { cache: 'no-store' }),
+          fetch('/api/orders', { cache: 'no-store' })
+        ])
+        
+        const itemsData = await itemsRes.json()
+        const ordersData = await ordersRes.json()
+        
+        const totalItems = Array.isArray(itemsData) ? itemsData.length : 0
+                       const pendingOrders = Array.isArray(ordersData) 
+                 ? ordersData.filter((o: any) => o.status === 'REQUESTED' || o.status === 'APPROVED' || o.status === 'ORDERED').length 
+                 : 0
+          
+        setStats({ totalItems, pendingOrders })
+        
+      } catch (error) {
+        console.error('Kunne ikke laste dashboard data:', error)
+      } finally {
+        setLoading(false)
+      }
+    })()
   }, [])
 
-  async function addProduct(e: React.FormEvent) {
-    e.preventDefault()
-    try {
-      const res = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, stock: Number(stock) }),
-      })
-      if (!res.ok) throw new Error('Failed to add')
-      setName('')
-      setStock(0)
-      await load()
-    } catch (e: any) {
-      setError(e.message)
+  const dashboardStats = [
+    {
+      title: "Totalt varer",
+      value: stats.totalItems.toString(),
+      icon: Package,
+      color: "from-blue-500 to-blue-600",
+      bgColor: "from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20",
+      change: stats.totalItems > 0 ? "Registrerte varer" : "Ingen varer",
+      trend: "up"
+    },
+    {
+      title: "Kritisk beholdning",
+      value: low.length.toString(),
+      icon: AlertTriangle,
+      color: "from-amber-500 to-orange-600",
+      bgColor: "from-amber-50 to-orange-100 dark:from-amber-900/20 dark:to-orange-800/20",
+      change: low.length > 0 ? "Krever handling" : "Alt OK",
+      trend: low.length > 0 ? "down" : "up"
+    },
+    {
+      title: "Nær utløp",
+      value: expiring.length.toString(),
+      icon: Clock,
+      color: "from-red-500 to-red-600",
+      bgColor: "from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20",
+      change: expiring.length > 0 ? "Se detaljer" : "Ingen varsler",
+      trend: expiring.length > 0 ? "down" : "up"
+    },
+    {
+      title: "Pågående bestillinger",
+      value: stats.pendingOrders.toString(),
+      icon: TrendingUp,
+      color: "from-green-500 to-green-600",
+      bgColor: "from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20",
+      change: stats.pendingOrders > 0 ? "Venter behandling" : "Alle ferdig",
+      trend: stats.pendingOrders > 0 ? "up" : "down"
     }
-  }
-
-  async function removeProduct(id: string) {
-    if (!confirm('Delete this product?')) return
-    await fetch(`/api/products/${id}`, { method: 'DELETE' })
-    await load()
-  }
+  ]
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-6">
-      <div className="max-w-4xl mx-auto space-y-8">
+    <div className="min-h-screen bg-bg-primary">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <header className="space-y-2 text-center">
-          <h1 className="text-3xl font-semibold tracking-tight text-gray-800">
-            Labora – Inventory
-          </h1>
-          <p className="text-gray-500">
-            Manage products, stock and supply with clarity
-          </p>
-        </header>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          <PageHeader 
+            title="Lagersystem" 
+            subtitle="Moderne oversikt over beholdning og kritiske varsler" 
+          />
+        </motion.div>
 
-        {/* Card for adding new product */}
-        <Card className="shadow-sm border border-gray-200">
-          <CardHeader>
-            <CardTitle className="text-lg font-medium">Add Product</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form
-              onSubmit={addProduct}
-              className="flex flex-col sm:flex-row gap-4"
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          {dashboardStats.map((stat, index) => (
+            <motion.div
+              key={stat.title}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: index * 0.1 }}
             >
-              <Input
-                placeholder="Product name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                className="flex-1"
-              />
-              <Input
-                type="number"
-                placeholder="Stock"
-                value={stock}
-                onChange={(e) => setStock(Number(e.target.value))}
-                required
-                className="w-32"
-              />
-              <Button
-                type="submit"
-                className="bg-sky-600 hover:bg-sky-700 text-white"
-              >
-                Add
-              </Button>
-            </form>
-            {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
-          </CardContent>
-        </Card>
+              <Card className="relative overflow-hidden group hover:scale-105 transition-all duration-300">
+                <div className={`absolute inset-0 bg-gradient-to-br ${stat.bgColor} opacity-50`} />
+                <CardContent className="p-6 relative">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-text-secondary">
+                        {stat.title}
+                      </p>
+                      <p className="text-3xl font-bold text-text-primary">
+                        {stat.value}
+                      </p>
+                      <div className="flex items-center gap-1">
+                        <Activity className={`w-3 h-3 ${stat.trend === 'up' ? 'text-success' : 'text-error'}`} />
+                        <span className={`text-xs font-medium ${stat.trend === 'up' ? 'text-success' : 'text-error'}`}>
+                          {stat.change}
+                        </span>
+                      </div>
+                    </div>
+                    <div className={`p-3 rounded-2xl bg-gradient-to-br ${stat.color} shadow-lg`}>
+                      <stat.icon className="w-6 h-6 text-white" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
 
-        {/* Product Table */}
-        <Card className="shadow-sm border border-gray-200">
-          <CardHeader>
-            <CardTitle className="text-lg font-medium">Product List</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <p className="text-gray-500">Loading...</p>
-            ) : products.length === 0 ? (
-              <p className="text-gray-500">No products yet</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead className="text-right">Stock</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {products.map((p) => (
-                    <TableRow key={p.id}>
-                      <TableCell className="font-medium">{p.name}</TableCell>
-                      <TableCell className="text-right">{p.stock}</TableCell>
-                      <TableCell className="text-right space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => removeProduct(p.id)}
-                          className="text-red-600 border-red-200 hover:bg-red-50"
-                        >
-                          Delete
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+        {/* Alerts Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Low Stock Alert */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6, delay: 0.4 }}
+          >
+            <Card className="h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl">
+                    <AlertTriangle className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold">Kritisk beholdning</h3>
+                    <p className="text-sm text-text-secondary font-normal">
+                      Varer som trenger påfyll
+                    </p>
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1,2,3].map(i => (
+                      <div key={i} className="animate-pulse">
+                        <div className="h-16 bg-surface rounded-xl"></div>
+                      </div>
+                    ))}
+                  </div>
+                ) : low.length === 0 ? (
+                  <div className="text-center py-8">
+                    <div className="w-16 h-16 bg-gradient-to-br from-success-500 to-success-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Package className="w-8 h-8 text-white" />
+                    </div>
+                    <p className="text-text-primary font-medium">Alle varer har god beholdning</p>
+                    <p className="text-text-secondary text-sm mt-1">Ingen kritiske varsler for øyeblikket</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {low.slice(0, 5).map((item, index) => (
+                      <motion.div
+                        key={item.itemId}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        className="flex items-center justify-between p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/10 dark:to-orange-900/10 rounded-xl border border-amber-200 dark:border-amber-800/30"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+                          <span className="font-medium text-text-primary">{item.name}</span>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                            {item.onHand} / {item.minStock}
+                          </div>
+                          <div className="text-xs text-text-tertiary">
+                            Minimum
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Expiring Items Alert */}
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6, delay: 0.5 }}
+          >
+            <Card className="h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-red-500 to-red-600 rounded-xl">
+                    <Clock className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold">Nær utløpsdato</h3>
+                    <p className="text-sm text-text-secondary font-normal">
+                      Varer som utløper snart
+                    </p>
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1,2,3].map(i => (
+                      <div key={i} className="animate-pulse">
+                        <div className="h-16 bg-surface rounded-xl"></div>
+                      </div>
+                    ))}
+                  </div>
+                ) : expiring.length === 0 ? (
+                  <div className="text-center py-8">
+                    <div className="w-16 h-16 bg-gradient-to-br from-success-500 to-success-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Clock className="w-8 h-8 text-white" />
+                    </div>
+                    <p className="text-text-primary font-medium">Ingen varer nær utløp</p>
+                    <p className="text-text-secondary text-sm mt-1">Alle datoer ser bra ut</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {expiring.slice(0, 5).map((lot, index) => (
+                      <motion.div
+                        key={lot.id}
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        className="flex items-center justify-between p-4 bg-gradient-to-r from-red-50 to-red-50 dark:from-red-900/10 dark:to-red-900/10 rounded-xl border border-red-200 dark:border-red-800/30"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                          <div>
+                            <div className="font-medium text-text-primary">
+                              {lot.item?.name || 'Ukjent vare'}
+                            </div>
+                            <div className="text-xs text-text-tertiary">
+                              {lot.location?.name || 'Ukjent lokasjon'}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-semibold text-red-700 dark:text-red-400">
+                            {lot.quantity} stk
+                          </div>
+                          <div className="text-xs text-text-tertiary">
+                            {lot.expiryDate ? new Date(lot.expiryDate).toLocaleDateString('nb-NO') : '—'}
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
       </div>
     </div>
   )
