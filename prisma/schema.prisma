@@ -36,19 +36,78 @@ enum Unit {
   ROLL        // Rull
 }
 
+// New enums for critical system improvements
+enum TransactionType {
+  RECEIPT      // Mottak (Inn)
+  CONSUMPTION  // Forbruk (Ut) 
+  ADJUSTMENT   // Justering (Inn/Ut - f.eks. etter telling)
+  TRANSFER     // Overføring mellom lokasjoner
+}
+
+enum Role {
+  ADMIN        // Full tilgang
+  PURCHASER    // Kan bestille og motta varer
+  LAB_USER     // Kan registrere forbruk og se lagerstatus
+  VIEWER       // Kun lesetilgang
+}
+
+enum CountingStatus {
+  PLANNED      // Planlagt telling
+  IN_PROGRESS  // Pågående telling
+  COMPLETED    // Fullført, venter godkjenning
+  APPROVED     // Godkjent og justert
+}
+
+// User management for proper audit trail and RBAC
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  name            String
+  role            Role      @default(LAB_USER)
+  isActive        Boolean   @default(true)
+  lastLoginAt     DateTime?
+  
+  // Relations - all actions traced to users
+  receiptsReceived        Receipt[]
+  ordersRequested        PurchaseOrder[]
+  transactions           InventoryTransaction[]
+  countingSessionsPlanned CycleCountingSession[] @relation("PlannedBy")
+  countingSessionsCounted CycleCountingSession[] @relation("CountedBy") 
+  countingSessionsApproved CycleCountingSession[] @relation("ApprovedBy")
+  countingLines          CycleCountingLine[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
 model Supplier {
   id                     String   @id @default(cuid())
   name                   String   @unique
+  
+  // Bestillingsmetoder og kontakt (fra CSV)
+  orderMethod            String?  @db.Text            // Ordre via (Web, E-post, etc.)
+  website                String?  @db.Text            // Nettside/webshop
+  orderEmail             String?  @db.Text            // Bestilling E-post
+  contactPerson          String?  @db.Text            // Vår kontaktperson
+  phone                  String?  @db.Text            // Telefon
+  username               String?  @db.Text            // Brukernavn for webshop
+  
+  // SIKKERHET: Passord lagres IKKE i klartekst! 
+  credentialsVaultId     String?  @db.Text            // Referanse til ekstern password vault
+  credentialsNotes       String?  @db.Text            // Instruksjoner for tilgang (f.eks. "Se IT for login")
+  
+  // Konsolidert informasjon fra CSV
+  notes                  String?  @db.Text            // Info/avtale, produkter, etc.
+  
+  // Legacy fields (for bakoverkompatibilitet)
   shortCode              String?  @unique
-  website                String?  @db.Text
   accountNumber          String?  @db.Text
-  contactName            String?  @db.Text
-  contactEmail           String?  @db.Text
-  contactPhone           String?  @db.Text
-  orderingMethod         String?  @db.Text
-  portalUsername         String?  @db.Text
-  portalPassword         String?  @db.Text
-  notes                  String?  @db.Text
+  contactName            String?  @db.Text            // DEPRECATED: Bruk contactPerson
+  contactEmail           String?  @db.Text            // DEPRECATED: Bruk orderEmail  
+  contactPhone           String?  @db.Text            // DEPRECATED: Bruk phone
+  orderingMethod         String?  @db.Text            // DEPRECATED: Bruk orderMethod
+  portalUsername         String?  @db.Text            // DEPRECATED: Bruk username
+  // SIKKERHET: portalPassword FJERNET - bruk credentialsVaultId i stedet
   
   // Fraktoptimalisering (KRITISK for kostnadstyring)
   freeShippingThreshold  Decimal? @db.Decimal(10, 2)  // Grense for gratis frakt
@@ -75,34 +134,26 @@ model Location {
   type      LocationType @default(MAIN)
   notes     String?      @db.Text
 
-  lots      InventoryLot[]
-  receiptLines ReceiptLine[]
-  defaultForItems Item[]  // Items that have this location as default
+  lots              InventoryLot[]
+  receiptLines      ReceiptLine[]
+  defaultForItems   Item[]  // Items that have this location as default
+  countingSessions  CycleCountingSession[]
 
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 }
 
-enum ItemCategory {
-  HMS
-  KJEMI
-  FISKEHELSE
-  KRYO
-  MOTTAK
-  MIKRO
-  ADMINISTRASJON
-  IT
-  FELLES
-  ANNET
-}
+// FJERNET: ItemCategory enum erstattet med Category-modell for fleksibilitet
+// Kategorier håndteres nå via Category-tabellen for bedre administrasjon
 
 model Department {
   id        String @id @default(cuid())
   name      String @unique
   code      String @unique
   
-  items     Item[]
-  orderLines PurchaseOrderLine[]
+  items             Item[]
+  orderLines        PurchaseOrderLine[]
+  countingSessions  CycleCountingSession[]
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -114,7 +165,8 @@ model Category {
   code        String @unique
   description String? @db.Text
   
-  items       Item[]
+  items             Item[]
+  countingSessions  CycleCountingSession[]
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -143,6 +195,12 @@ model SupplierItem {
   discountCodeRequired String? @db.Text  // Koden som MÅ oppgis (f.eks. "Ref: 09991274" hos Merck)
   agreementReference  String?  @db.Text  // Referanse til avtalen (f.eks. "Labforum 2025")
 
+  // CSV Import fields (from VAREKARTOTEK.csv)
+  packageDescription  String?  @db.Text  // Forpakning (f.eks. "10stk/eske")
+  quantityPerPackage  Decimal? @db.Decimal(10, 2) // Enhet per pk (f.eks. "10 stk" -> 10)
+  discountNotes      String?  @db.Text  // % rabatt details
+  priceCheckSignature String? @db.Text  // Pris-sjekk Sign. (raw text before parsing)
+
   // Vedlikehold og Gyldighet
   priceValidUntil     DateTime? // For tidsbegrensede tilbud
   lastVerifiedDate    DateTime @default(now()) @updatedAt // Når ble prisen sist bekreftet?
@@ -167,12 +225,17 @@ model Item {
   description     String?      @db.Text
   manufacturer    String?      @db.Text  // Produsent
   
-  // Kategorisering (nye relasjoner)
-  category        ItemCategory @default(ANNET)
+  // CSV Import fields (from VAREKARTOTEK.csv)
+  externalId      String?      @unique              // Kartotek ID (critical for import tracking)
+  hmsCodes        String?      @db.Text             // Sikkerhet* (HMS codes like O, F, T+)
+  certificationInfo String?    @db.Text             // Merking/Sertifikat
+  internalReference String?    @db.Text             // EK ref.
+  
+  // Kategorisering (kun relasjoner - ingen enum)
   departmentId    String?
   department      Department?  @relation(fields: [departmentId], references: [id])
   categoryId      String?
-  categoryRef     Category?    @relation(fields: [categoryId], references: [id])
+  category        Category?    @relation(fields: [categoryId], references: [id])
   
   // Enheter og mengder
   unit            Unit         @default(UNIT)        // Lagerenhet
@@ -196,7 +259,7 @@ model Item {
   // Tilleggsinformasjon
   barcode         String?
   storageTemp     String?      @db.Text
-  hmsCode         String?      @db.Text             // HMS-koder
+  hmsCode         String?      @db.Text             // HMS-koder (legacy - use hmsCodes)
   notes           String?      @db.Text
 
   // Relasjoner
@@ -241,6 +304,10 @@ model InventoryLot {
   expiryDate  DateTime?
   quantity    Int      @default(0)
 
+  // KRITISK: Alle endringer spores via transaksjoner
+  transactions        InventoryTransaction[]
+  cycleCountingLines  CycleCountingLine[]
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -273,8 +340,9 @@ model PurchaseOrder {
   status          OrderStatus @default(REQUESTED)
   priority        Priority    @default(MEDIUM)
   
-  // Datoer og sporing
-  requestedBy     String?     // Hvem forespurte
+  // Datoer og sporing (KRITISK: Bruk User-referanser for audit trail)
+  requestedBy     String      // Hvem forespurte (PÅKREVD for sporbarhet)
+  requester       User        @relation(fields: [requestedBy], references: [id])
   requestedDate   DateTime    @default(now())  // Registrert dato
   approvedBy      String?     // Hvem godkjente
   approvedDate    DateTime?   // Godkjent dato
@@ -291,6 +359,7 @@ model PurchaseOrder {
 
   lines           PurchaseOrderLine[]
   receipts        Receipt[]
+  transactions    InventoryTransaction[]
 }
 
 model PurchaseOrderLine {
@@ -320,9 +389,10 @@ model Receipt {
   orderId     String?
   order       PurchaseOrder? @relation(fields: [orderId], references: [id])
   
-  // Mottaksinformasjon
+  // Mottaksinformasjon (KRITISK: Bruk User-referanse for sporbarhet)
   receivedAt  DateTime @default(now())  // Mottatt_Dato
-  receivedBy  String?                   // Hvem registrerte
+  receivedBy  String                    // Hvem registrerte (PÅKREVD)
+  receiver    User     @relation(fields: [receivedBy], references: [id])
   
   // Leverandør referanse (hvis ikke koblet til bestilling)
   supplierId  String?
@@ -330,7 +400,8 @@ model Receipt {
   
   notes       String?  @db.Text
 
-  lines       ReceiptLine[]
+  lines         ReceiptLine[]
+  transactions  InventoryTransaction[]
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -347,4 +418,120 @@ model ReceiptLine {
   lotNumber    String?
   expiryDate   DateTime?
   quantity     Int
+}
+
+// KRITISK: Full sporbarhet av alle lagerbevegelser
+model InventoryTransaction {
+  id              String          @id @default(cuid())
+  type            TransactionType // RECEIPT, CONSUMPTION, ADJUSTMENT, TRANSFER
+  
+  // Hvilken lot påvirkes
+  inventoryLotId  String
+  lot             InventoryLot    @relation(fields: [inventoryLotId], references: [id])
+  
+  // Endringen
+  quantityChange  Int             // Positivt for inn, negativt for ut
+  quantityBefore  Int             // Beholdning før transaksjonen
+  quantityAfter   Int             // Beholdning etter transaksjonen
+  
+  // Kostnadsberegning
+  unitCost        Decimal?        @db.Decimal(10, 2)  // Kostnad per enhet
+  totalValue      Decimal?        @db.Decimal(10, 2)  // Total verdi av transaksjonen
+  
+  // Sporbarhet og dokumentasjon
+  notes           String?         @db.Text
+  reasonCode      String?         // Standardisert årsakskode (f.eks. "EXPIRED", "DAMAGED", "ANALYSIS")
+  
+  // Hvem utførte transaksjonen (KRITISK for audit trail)
+  userId          String
+  user            User            @relation(fields: [userId], references: [id])
+  
+  // Koblinger til relaterte dokumenter
+  orderId         String?
+  order           PurchaseOrder?  @relation(fields: [orderId], references: [id])
+  receiptId       String?
+  receipt         Receipt?        @relation(fields: [receiptId], references: [id])
+  countingSessionId String?
+  countingSession CycleCountingSession? @relation(fields: [countingSessionId], references: [id])
+  
+  createdAt       DateTime        @default(now())
+  
+  @@index([inventoryLotId])
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// Strukturert varetelling for å håndtere avvik
+model CycleCountingSession {
+  id              String         @id @default(cuid())
+  name            String         // F.eks. "Månedstelling Januar 2025 - Hovedlager"
+  description     String?        @db.Text
+  status          CountingStatus @default(PLANNED)
+  
+  // Scope - hvilke varer skal telles
+  locationId      String?
+  location        Location?      @relation(fields: [locationId], references: [id])
+  categoryId      String?
+  category        Category?      @relation(fields: [categoryId], references: [id])
+  departmentId    String?
+  department      Department?    @relation(fields: [departmentId], references: [id])
+  
+  // Workflow og sporbarhet
+  plannedBy       String         // Hvem planla tellingen
+  planner         User           @relation("PlannedBy", fields: [plannedBy], references: [id])
+  countedBy       String?        // Hvem utførte tellingen
+  counter         User?          @relation("CountedBy", fields: [countedBy], references: [id])
+  approvedBy      String?        // Hvem godkjente justeringene
+  approver        User?          @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  
+  // Tidspunkter
+  plannedDate     DateTime       // Når skal tellingen utføres
+  startedAt       DateTime?      // Når ble tellingen startet
+  completedAt     DateTime?      // Når ble tellingen fullført
+  approvedAt      DateTime?      // Når ble justeringene godkjent
+  
+  // Statistikk
+  totalItems      Int            @default(0)  // Totalt antall lots å telle
+  countedItems    Int            @default(0)  // Antall lots talt
+  discrepancies   Int            @default(0)  // Antall avvik funnet
+  
+  notes           String?        @db.Text
+  
+  // Relasjoner
+  lines           CycleCountingLine[]
+  transactions    InventoryTransaction[]
+  
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  
+  @@index([status])
+  @@index([plannedDate])
+}
+
+// Individuelle tellelinjer
+model CycleCountingLine {
+  id              String              @id @default(cuid())
+  sessionId       String
+  session         CycleCountingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  // Hvilket lot telles
+  inventoryLotId  String
+  lot             InventoryLot        @relation(fields: [inventoryLotId], references: [id])
+  
+  // Telling
+  systemQuantity  Int                 // Forventet antall (fra system)
+  countedQuantity Int?                // Faktisk talt antall
+  discrepancy     Int                 @default(0)  // Differanse (counted - system)
+  
+  notes           String?             @db.Text     // F.eks. "Fant 2 ødelagte flasker"
+  
+  // Sporbarhet
+  countedAt       DateTime?           // Når ble denne linjen talt
+  countedBy       String?             // Hvem talde denne linjen
+  counter         User?               @relation(fields: [countedBy], references: [id])
+  
+  createdAt       DateTime            @default(now())
+  
+  @@unique([sessionId, inventoryLotId])
 }

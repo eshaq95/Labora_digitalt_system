@@ -36,7 +36,7 @@ export function ThemeToggle() {
       whileTap={{ scale: 0.95 }}
       aria-label="Toggle theme"
       onClick={toggle}
-      className="relative p-2.5 rounded-xl bg-surface hover:bg-surface-hover border border-border hover:border-border-hover transition-all duration-300 shadow-sm hover:shadow-md"
+      className="relative p-3 rounded-xl bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 border border-gray-200 dark:border-slate-600 hover:border-gray-300 dark:hover:border-slate-500 transition-all duration-300 shadow-lg hover:shadow-xl"
     >
       <motion.div
         animate={{ 

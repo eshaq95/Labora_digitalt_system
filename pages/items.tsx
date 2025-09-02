@@ -2,14 +2,15 @@ import { useEffect, useState, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableRow, TableHead, TableCell, TableBody } from '@/components/ui/table'
-import { PageHeader } from '@/components/ui/page-header'
+import { PageLayout } from '@/components/layout/page-layout'
 import { SearchInput } from '@/components/ui/search-input'
 import { EmptyState } from '@/components/ui/empty-state'
+import { Modal } from '@/components/ui/modal'
 import { useToast } from '@/components/ui/toast'
 import { ExcelImport } from '@/components/ui/excel-import'
 import { ItemForm } from '@/components/forms/item-form'
 import { motion } from 'framer-motion'
-import { Plus, Edit, Trash2, Package, ShoppingCart } from 'lucide-react'
+import { Plus, Edit, Trash2, Package, ShoppingCart, Upload, Eye } from 'lucide-react'
 import { useRouter } from 'next/router'
 
 type Item = { 
@@ -17,9 +18,8 @@ type Item = {
   sku: string; 
   name: string; 
   manufacturer?: string | null;
-  category: string;
   department?: { name: string } | null;
-  categoryRef?: { name: string } | null;
+  category?: { name: string } | null;
   unit: string;
   orderUnit?: string | null;
   conversionFactor?: number | null;
@@ -31,7 +31,6 @@ type Item = {
   requiresLotNumber: boolean;
   defaultLocationId?: string | null;
   defaultLocation?: { name: string } | null;
-  supplier?: { name: string } | null 
 }
 
 export default function ItemsPage() {
@@ -40,6 +39,8 @@ export default function ItemsPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editItem, setEditItem] = useState<Item | null>(null)
   const [loading, setLoading] = useState(false)
+  const [importModalOpen, setImportModalOpen] = useState(false)
+  const [importing, setImporting] = useState(false)
   const { showToast } = useToast()
   const router = useRouter()
 
@@ -47,10 +48,8 @@ export default function ItemsPage() {
     items.filter(item => 
       item.name.toLowerCase().includes(search.toLowerCase()) ||
       item.sku.toLowerCase().includes(search.toLowerCase()) ||
-      item.category.toLowerCase().includes(search.toLowerCase()) ||
       item.department?.name.toLowerCase().includes(search.toLowerCase()) ||
-      item.categoryRef?.name.toLowerCase().includes(search.toLowerCase()) ||
-      item.supplier?.name.toLowerCase().includes(search.toLowerCase())
+      item.category?.name.toLowerCase().includes(search.toLowerCase())
     ), [items, search]
   )
 
@@ -94,24 +93,66 @@ export default function ItemsPage() {
     router.push(`/orders?suggestItem=${item.id}&suggestName=${encodeURIComponent(item.name)}`)
   }
 
-  return (
-    <div className="min-h-screen bg-white dark:bg-gray-900 py-8 px-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        <PageHeader 
-          title="Varer" 
-          subtitle="Administrer varekartotek med minimumsbeholdning"
-          actions={
-            <div className="flex gap-2">
-              <ExcelImport onImportComplete={load} />
-              <Button onClick={openCreate}>
-                <Plus className="w-4 h-4 mr-2" />
-                Ny vare
-              </Button>
-            </div>
-          }
-        />
+  async function handleCsvImport(e: React.FormEvent) {
+    e.preventDefault()
+    const formData = new FormData(e.target as HTMLFormElement)
+    const file = formData.get('file') as File
+    
+    if (!file) {
+      showToast('error', 'Velg en fil å importere')
+      return
+    }
+    
+    setImporting(true)
+    try {
+      const importFormData = new FormData()
+      importFormData.append('file', file)
+      
+      const response = await fetch('/api/items/import/csv', {
+        method: 'POST',
+        body: importFormData
+      })
+      
+      const result = await response.json()
+      
+      if (response.ok) {
+        showToast('success', result.message)
+        setImportModalOpen(false)
+        await load()
+      } else {
+        showToast('error', result.error || 'Import feilet')
+        if (result.details) {
+          console.error('Import details:', result.details)
+        }
+      }
+    } catch (error) {
+      showToast('error', 'Noe gikk galt under import')
+      console.error('Import error:', error)
+    } finally {
+      setImporting(false)
+    }
+  }
 
-        <Card className="border-gray-200/60 dark:border-gray-800/60 bg-white/70 dark:bg-gray-900/60 backdrop-blur">
+  return (
+    <PageLayout
+      title="Varer"
+      subtitle="Administrer varekartotek med minimumsbeholdning"
+      actions={
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImportModalOpen(true)}>
+            <Upload className="w-4 h-4 mr-2" />
+            Importer CSV
+          </Button>
+          <ExcelImport onImportComplete={load} />
+          <Button onClick={openCreate}>
+            <Plus className="w-4 h-4 mr-2" />
+            Ny vare
+          </Button>
+        </div>
+      }
+    >
+
+      <Card className="border-border bg-surface">
           <CardHeader className="pb-4">
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
               <CardTitle className="flex items-center gap-2">
@@ -148,7 +189,7 @@ export default function ItemsPage() {
                         <TableHead className="font-semibold w-40">SKU</TableHead>
                         <TableHead className="font-semibold min-w-60">Navn</TableHead>
                         <TableHead className="font-semibold w-28">Kategori</TableHead>
-                        <TableHead className="font-semibold w-36">Leverandør</TableHead>
+                        <TableHead className="font-semibold w-36">Avdeling</TableHead>
                         <TableHead className="font-semibold w-32">Status</TableHead>
                         <TableHead className="font-semibold text-right w-24">Min. beholdning</TableHead>
                         <TableHead className="font-semibold text-right w-24">Handlinger</TableHead>
@@ -178,20 +219,13 @@ export default function ItemsPage() {
                                  </div>
                                </TableCell>
                         <TableCell className="w-28">
-                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full whitespace-nowrap ${
-                            item.category === 'HMS' ? 'bg-red-50 text-red-700 border border-red-200' :
-                            item.category === 'KJEMI' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
-                            item.category === 'FISKEHELSE' ? 'bg-labora-100 text-labora-800 border border-labora-200' :
-                            item.category === 'MIKRO' ? 'bg-green-50 text-green-700 border border-green-200' :
-                            item.category === 'IT' ? 'bg-surface text-muted border border-line' :
-                            'bg-amber-50 text-amber-700 border border-amber-200'
-                          }`}>
-                            {item.category}
+                          <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full whitespace-nowrap bg-blue-50 text-blue-700 border border-blue-200">
+                            {item.category?.name || 'Ukategorisert'}
                           </span>
                         </TableCell>
                         <TableCell className="text-muted w-36">
-                          <div className="truncate text-sm" title={item.supplier?.name || '—'}>
-                            {item.supplier?.name || '—'}
+                          <div className="truncate text-sm">
+                            {item.department?.name || '—'}
                           </div>
                         </TableCell>
                         <TableCell className="w-36">
@@ -217,8 +251,17 @@ export default function ItemsPage() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right font-medium w-24">{item.minStock}</TableCell>
-                        <TableCell className="text-right w-32">
+                        <TableCell className="text-right w-40">
                           <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => router.push(`/items/${item.id}`)}
+                              className="h-8 w-8 p-0 hover:bg-labora-50 dark:hover:bg-labora-900/20 hover:border-labora-300 dark:hover:border-labora-600 hover:text-labora-700 dark:hover:text-labora-400"
+                              title="Vis detaljer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </Button>
                             <Button
                               variant="outline"
                               size="sm"
@@ -262,8 +305,87 @@ export default function ItemsPage() {
           editItem={editItem}
           onSave={load}
         />
-      </div>
-    </div>
+
+        {/* CSV Import Modal */}
+        <Modal
+          open={importModalOpen}
+          onClose={() => setImportModalOpen(false)}
+          title="Importer varekartotek fra CSV"
+          size="lg"
+        >
+          <form onSubmit={handleCsvImport} className="space-y-4">
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">VAREKARTOTEK.csv Format</h4>
+              <p className="text-sm text-blue-700 dark:text-blue-300 mb-2">
+                Filen må inneholde følgende kolonner for å importere både varer og leverandørpriser:
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <h5 className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">Vareinfo (Item):</h5>
+                  <ul className="text-xs text-blue-600 dark:text-blue-400 space-y-1">
+                    <li>• <strong>Kartotek ID</strong> - Unik ID</li>
+                    <li>• <strong>Name</strong> - Varenavn (påkrevd)</li>
+                    <li>• <strong>Produsent</strong> - Produsent</li>
+                    <li>• <strong>Avd.</strong> - Avdeling</li>
+                    <li>• <strong>Kategori</strong> - Kategori</li>
+                    <li>• <strong>Sikkerhet*</strong> - HMS-koder</li>
+                    <li>• <strong>Merking/Sertifikat</strong> - Sertifikater</li>
+                    <li>• <strong>Plassering</strong> - Standard lokasjon</li>
+                  </ul>
+                </div>
+                <div>
+                  <h5 className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">Leverandørinfo (SupplierItem):</h5>
+                  <ul className="text-xs text-blue-600 dark:text-blue-400 space-y-1">
+                    <li>• <strong>Leverandør</strong> - Leverandørnavn</li>
+                    <li>• <strong>Best.nr.</strong> - Artikkelnummer</li>
+                    <li>• <strong>Pris inkl. rabatt</strong> - Faktisk pris</li>
+                    <li>• <strong>Prisavtale</strong> - Avtale referanse</li>
+                    <li>• <strong>Forpakning</strong> - Pakningsbeskrivelse</li>
+                    <li>• <strong>Enhet per pk</strong> - Antall per pakke</li>
+                    <li>• <strong>Link /vedlegg</strong> - Produktlenke</li>
+                  </ul>
+                </div>
+              </div>
+              <div className="mt-3 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded">
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  <strong>Viktig:</strong> Arbeidsflyt-kolonner som "1.Bestill antall", "2.Velg prioritet", "Varetelling" 
+                  blir ignorert - de tilhører bestillingssystemet, ikke varekartotek.
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Velg VAREKARTOTEK CSV-fil <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="file"
+                name="file"
+                accept=".csv,.xlsx,.xls"
+                required
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Støtter CSV (.csv) og Excel (.xlsx, .xls) filer
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <Button type="submit" disabled={importing} className="flex-1">
+                {importing ? 'Importerer varer og priser...' : 'Importer varekartotek'}
+              </Button>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setImportModalOpen(false)}
+                disabled={importing}
+              >
+                Avbryt
+              </Button>
+            </div>
+          </form>
+        </Modal>
+    </PageLayout>
   )
 }
 

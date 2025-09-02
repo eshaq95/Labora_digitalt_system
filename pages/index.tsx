@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { PageHeader } from '@/components/ui/page-header'
+import { PageLayout } from '@/components/layout/page-layout'
 import { motion } from 'framer-motion'
-import { AlertTriangle, Clock, TrendingUp, Package, Zap, BarChart3, Activity } from 'lucide-react'
+import { AlertTriangle, Clock, TrendingUp, Package, Zap, BarChart3, Activity, DollarSign, FileText } from 'lucide-react'
 
 type AlertLow = { itemId: string; name: string; minStock: number; onHand: number }
 type Expiring = { id: string; item: { name: string } | null; location: { name: string } | null; expiryDate: string | null; quantity: number }
+type ExpiringAgreement = { id: string; itemName: string; supplierName: string; agreementReference: string | null; expiryDate: string | null; daysUntilExpiry: number | null }
+type OutdatedPrice = { id: string; itemName: string; supplierName: string; lastVerified: string; daysSinceVerified: number }
 
 export default function Home() {
   const [low, setLow] = useState<AlertLow[]>([])
   const [expiring, setExpiring] = useState<Expiring[]>([])
+  const [expiringAgreements, setExpiringAgreements] = useState<ExpiringAgreement[]>([])
+  const [outdatedPrices, setOutdatedPrices] = useState<OutdatedPrice[]>([])
   const [stats, setStats] = useState({ totalItems: 0, pendingOrders: 0 })
   const [loading, setLoading] = useState(true)
 
@@ -17,10 +21,18 @@ export default function Home() {
     ;(async () => {
       try {
         // Fetch alerts
-        const alertsRes = await fetch('/api/alerts', { cache: 'no-store' })
+        const [alertsRes, priceAlertsRes] = await Promise.all([
+          fetch('/api/alerts', { cache: 'no-store' }),
+          fetch('/api/price-alerts', { cache: 'no-store' })
+        ])
+        
         const alertsData = await alertsRes.json()
+        const priceAlertsData = await priceAlertsRes.json()
+        
         setLow(Array.isArray(alertsData.lowStock) ? alertsData.lowStock : [])
         setExpiring(Array.isArray(alertsData.expiring) ? alertsData.expiring : [])
+        setExpiringAgreements(Array.isArray(priceAlertsData.expiringAgreements) ? priceAlertsData.expiringAgreements : [])
+        setOutdatedPrices(Array.isArray(priceAlertsData.outdatedPrices) ? priceAlertsData.outdatedPrices : [])
         
         // Fetch stats
         const [itemsRes, ordersRes] = await Promise.all([
@@ -40,9 +52,9 @@ export default function Home() {
         
       } catch (error) {
         console.error('Kunne ikke laste dashboard data:', error)
-      } finally {
-        setLoading(false)
-      }
+    } finally {
+      setLoading(false)
+    }
     })()
   }, [])
 
@@ -86,19 +98,16 @@ export default function Home() {
   ]
 
   return (
-    <div className="min-h-screen bg-bg-primary">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
-          <PageHeader 
-            title="Lagersystem" 
-            subtitle="Moderne oversikt over beholdning og kritiske varsler" 
-          />
-        </motion.div>
+    <PageLayout
+      title="Lagersystem"
+      subtitle="Moderne oversikt over beholdning og kritiske varsler"
+      className="bg-gradient-to-br from-neutral-50 via-white to-blue-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900"
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6 }}
+      >
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -138,7 +147,7 @@ export default function Home() {
         </div>
 
         {/* Alerts Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
           {/* Low Stock Alert */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
@@ -146,7 +155,7 @@ export default function Home() {
             transition={{ duration: 0.6, delay: 0.4 }}
           >
             <Card className="h-full">
-              <CardHeader>
+          <CardHeader>
                 <CardTitle className="flex items-center gap-3">
                   <div className="p-2 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl">
                     <AlertTriangle className="w-5 h-5 text-white" />
@@ -158,7 +167,7 @@ export default function Home() {
                     </p>
                   </div>
                 </CardTitle>
-              </CardHeader>
+          </CardHeader>
               <CardContent className="space-y-4">
                 {loading ? (
                   <div className="space-y-3">
@@ -276,11 +285,117 @@ export default function Home() {
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+          </CardContent>
+        </Card>
+          </motion.div>
+
+          {/* Price & Agreement Alerts */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.6 }}
+          >
+            <Card className="h-full">
+          <CardHeader>
+                <CardTitle className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl">
+                    <DollarSign className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold">Pris- og avtalevarsler</h3>
+                    <p className="text-sm text-text-secondary font-normal">
+                      Avtaler og priser som trenger oppfølging
+                    </p>
+                  </div>
+                </CardTitle>
+          </CardHeader>
+              <CardContent className="space-y-4">
+            {loading ? (
+                  <div className="space-y-3">
+                    {[1,2,3].map(i => (
+                      <div key={i} className="animate-pulse">
+                        <div className="h-16 bg-surface rounded-xl"></div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (expiringAgreements.length === 0 && outdatedPrices.length === 0) ? (
+                  <div className="text-center py-8">
+                    <div className="w-16 h-16 bg-gradient-to-br from-success-500 to-success-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <DollarSign className="w-8 h-8 text-white" />
+                    </div>
+                    <p className="text-text-primary font-medium">Alle avtaler er oppdaterte</p>
+                    <p className="text-text-secondary text-sm mt-1">Ingen prisvarsler for øyeblikket</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {/* Expiring Agreements */}
+                    {expiringAgreements.slice(0, 3).map((agreement, index) => (
+                      <motion.div
+                        key={`agreement-${agreement.id}`}
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-blue-50 dark:from-blue-900/10 dark:to-blue-900/10 rounded-xl border border-blue-200 dark:border-blue-800/30"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                          <div>
+                            <div className="font-medium text-text-primary">
+                              {agreement.supplierName}
+                            </div>
+                            <div className="text-xs text-text-tertiary">
+                              {agreement.agreementReference || 'Avtale utløper'}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-semibold text-blue-700 dark:text-blue-400">
+                            {agreement.daysUntilExpiry} dager
+                          </div>
+                          <div className="text-xs text-text-tertiary">
+                            igjen
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                    
+                    {/* Outdated Prices */}
+                    {outdatedPrices.slice(0, 2).map((price, index) => (
+                      <motion.div
+                        key={`price-${price.id}`}
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: (expiringAgreements.length + index) * 0.1 }}
+                        className="flex items-center justify-between p-4 bg-gradient-to-r from-amber-50 to-amber-50 dark:from-amber-900/10 dark:to-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-800/30"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+                          <div>
+                            <div className="font-medium text-text-primary">
+                              {price.itemName}
+                            </div>
+                            <div className="text-xs text-text-tertiary">
+                              {price.supplierName}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                            {price.daysSinceVerified} dager
+                          </div>
+                          <div className="text-xs text-text-tertiary">
+                            siden sjekk
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+            )}
+          </CardContent>
+        </Card>
           </motion.div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </PageLayout>
   )
 }

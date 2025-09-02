@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableRow, TableHead, TableCell, TableBody } from '@/components/ui/table'
-import { PageHeader } from '@/components/ui/page-header'
+import { PageLayout } from '@/components/layout/page-layout'
 import { SearchInput } from '@/components/ui/search-input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useToast } from '@/components/ui/toast'
@@ -125,20 +125,18 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900 py-8 px-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        <PageHeader 
-          title="Bestillinger" 
-          subtitle="Administrer innkjøpsbestillinger og ordrer"
-          actions={
-            <Button onClick={openCreate}>
-              <Plus className="w-4 h-4 mr-2" />
-              Ny bestilling
-            </Button>
-          }
-        />
+    <PageLayout
+      title="Bestillinger"
+      subtitle="Administrer innkjøpsbestillinger og ordrer"
+      actions={
+        <Button onClick={openCreate}>
+          <Plus className="w-4 h-4 mr-2" />
+          Ny bestilling
+        </Button>
+      }
+    >
 
-        <Card className="border-gray-200/60 dark:border-gray-800/60 bg-white/70 dark:bg-gray-900/60 backdrop-blur">
+      <Card className="border-border bg-surface">
           <CardHeader className="pb-4">
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
               <CardTitle className="flex items-center gap-2">
@@ -264,7 +262,6 @@ export default function OrdersPage() {
           onSave={load}
           suggestedItem={suggestItem && suggestName ? { id: suggestItem as string, name: suggestName as string } : undefined}
         />
-      </div>
-    </div>
+    </PageLayout>
   )
 }

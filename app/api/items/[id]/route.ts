@@ -6,17 +6,17 @@ export async function GET(_: Request, ctx: any) {
     const item = await prisma.item.findUnique({ 
       where: { id },
       include: {
-        supplier: true,
         defaultLocation: true,
         department: true,
-        categoryRef: true
+        category: true
       }
     })
     if (!item) {
       return Response.json({ error: 'Item not found' }, { status: 404 })
     }
     return Response.json(item)
-  } catch {
+  } catch (error) {
+    console.error('Feil ved henting av vare:', error)
     return Response.json({ error: 'Not found' }, { status: 404 })
   }
 }
@@ -37,14 +37,14 @@ export async function PATCH(req: Request, ctx: any) {
       where: { id }, 
       data,
       include: {
-        supplier: true,
         defaultLocation: true,
         department: true,
-        categoryRef: true
+        category: true
       }
     })
     return Response.json(updated)
-  } catch {
+  } catch (error) {
+    console.error('Feil ved oppdatering av vare:', error)
     return Response.json({ error: 'Not found' }, { status: 404 })
   }
 }
