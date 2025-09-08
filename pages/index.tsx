@@ -26,8 +26,29 @@ export default function Home() {
           fetch('/api/price-alerts', { cache: 'no-store' })
         ])
         
-        const alertsData = await alertsRes.json()
-        const priceAlertsData = await priceAlertsRes.json()
+        // Sjekk om response er OK før parsing
+        let alertsData = { lowStock: [], expiring: [] }
+        let priceAlertsData = { expiringAgreements: [], outdatedPrices: [] }
+        
+        if (alertsRes.ok) {
+          try {
+            alertsData = await alertsRes.json()
+          } catch (error) {
+            console.error('Error parsing alerts response:', error)
+          }
+        } else {
+          console.error('Alerts API error:', alertsRes.status, alertsRes.statusText)
+        }
+        
+        if (priceAlertsRes.ok) {
+          try {
+            priceAlertsData = await priceAlertsRes.json()
+          } catch (error) {
+            console.error('Error parsing price alerts response:', error)
+          }
+        } else {
+          console.error('Price alerts API error:', priceAlertsRes.status, priceAlertsRes.statusText)
+        }
         
         setLow(Array.isArray(alertsData.lowStock) ? alertsData.lowStock : [])
         setExpiring(Array.isArray(alertsData.expiring) ? alertsData.expiring : [])

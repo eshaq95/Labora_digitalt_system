@@ -115,11 +115,16 @@ async function main() {
 
   console.log('🚚 Creating suppliers...')
   for (const supplier of suppliers) {
-    await prisma.supplier.upsert({
-      where: { name: supplier.name },
-      update: {},
-      create: supplier
+    // Since name is no longer unique, use findFirst and create if not found
+    const existing = await prisma.supplier.findFirst({
+      where: { name: supplier.name }
     })
+    
+    if (!existing) {
+      await prisma.supplier.create({
+        data: supplier
+      })
+    }
   }
 
   // Seed some example SupplierItems (if we have items)

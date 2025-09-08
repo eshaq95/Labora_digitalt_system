@@ -2,17 +2,12 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { cookies } from 'next/headers'
 import { sign } from 'jsonwebtoken'
+import bcrypt from 'bcryptjs'
 
 const loginSchema = z.object({
   email: z.string().email('Ugyldig e-postadresse'),
   password: z.string().min(1, 'Passord er påkrevd')
 })
-
-// Enkel passord-validering (i produksjon: bruk bcrypt)
-const validatePassword = (email: string, password: string): boolean => {
-  // For demo: alle brukere har passord "labora123"
-  return password === 'labora123'
-}
 
 export async function POST(req: Request) {
   try {
@@ -27,7 +22,8 @@ export async function POST(req: Request) {
         email: true,
         name: true,
         role: true,
-        isActive: true
+        isActive: true,
+        password: true
       }
     })
 
@@ -44,7 +40,8 @@ export async function POST(req: Request) {
     }
 
     // Valider passord
-    if (!validatePassword(email, password)) {
+    const isValidPassword = await bcrypt.compare(password, user.password)
+    if (!isValidPassword) {
       return Response.json({ 
         error: 'Ugyldig e-post eller passord' 
       }, { status: 401 })
@@ -94,7 +91,7 @@ export async function POST(req: Request) {
     if (error instanceof z.ZodError) {
       return Response.json({ 
         error: 'Ugyldig input', 
-        details: error.errors 
+        details: error.issues 
       }, { status: 400 })
     }
 

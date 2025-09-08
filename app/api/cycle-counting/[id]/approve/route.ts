@@ -7,14 +7,15 @@ const approveCountingSchema = z.object({
   adjustmentNotes: z.string().optional()
 })
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params
     const body = await req.json()
     const { approvedBy, adjustmentNotes } = approveCountingSchema.parse(body)
 
     // Hent session med alle linjer
     const session = await prisma.cycleCountingSession.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         lines: {
           include: {
@@ -32,12 +33,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       return Response.json({ error: 'Varetelling ikke funnet' }, { status: 404 })
     }
 
-    if (session.status !== 'COMPLETED') {
-      return Response.json({ error: 'Kan kun godkjenne fullførte varetellinger' }, { status: 400 })
-    }
-
     if (session.status === 'APPROVED') {
       return Response.json({ error: 'Varetelling er allerede godkjent' }, { status: 400 })
+    }
+
+    if (session.status !== 'COMPLETED') {
+      return Response.json({ error: 'Kan kun godkjenne fullførte varetellinger' }, { status: 400 })
     }
 
     // Sjekk bruker og rettigheter
@@ -55,7 +56,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     // Utfør justeringer atomisk
     const result = await prisma.$transaction(async (tx) => {
-      const adjustments = []
+      const adjustments: Array<{
+        item: string
+        sku: string
+        oldQuantity: number
+        newQuantity: number
+        adjustment: number
+        unit: string
+      }> = []
       let totalAdjustments = 0
 
       // Gå gjennom alle linjer med avvik
@@ -100,7 +108,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
       // Oppdater session som godkjent
       const approvedSession = await tx.cycleCountingSession.update({
-        where: { id: params.id },
+        where: { id },
         data: {
           status: 'APPROVED',
           approvedBy,
@@ -131,7 +139,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (error instanceof z.ZodError) {
       return Response.json({ 
         error: 'Ugyldig input', 
-        details: error.errors 
+        details: error.issues 
       }, { status: 400 })
     }
 

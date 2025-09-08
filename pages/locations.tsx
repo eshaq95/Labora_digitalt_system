@@ -8,8 +8,9 @@ import { SearchInput } from '@/components/ui/search-input'
 import { Modal } from '@/components/ui/modal'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useToast } from '@/components/ui/toast'
+import { EntityQRCode } from '@/components/ui/qr-code-generator'
 import { motion } from 'framer-motion'
-import { Plus, Edit, Trash2, Warehouse } from 'lucide-react'
+import { Plus, Edit, Trash2, Warehouse, QrCode } from 'lucide-react'
 
 type Location = { 
   id: string; 
@@ -24,6 +25,9 @@ const locationTypes = {
   OTHER: 'Annet'
 }
 
+
+
+
 export default function LocationsPage() {
   const [locations, setLocations] = useState<Location[]>([])
   const [search, setSearch] = useState('')
@@ -31,6 +35,8 @@ export default function LocationsPage() {
   const [editLocation, setEditLocation] = useState<Location | null>(null)
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({ name: '', type: 'MAIN' })
+  const [qrModalOpen, setQrModalOpen] = useState(false)
+  const [selectedLocationForQR, setSelectedLocationForQR] = useState<Location | null>(null)
   const { showToast } = useToast()
 
   const filteredLocations = locations.filter(location => 
@@ -176,6 +182,17 @@ export default function LocationsPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
+                                onClick={() => {
+                                  setSelectedLocationForQR(location);
+                                  setQrModalOpen(true);
+                                }}
+                                className="h-8 w-8 p-0 hover:bg-green-50 dark:hover:bg-green-900/20 hover:border-green-300 dark:hover:border-green-600 hover:text-green-700 dark:hover:text-green-400"
+                              >
+                                <QrCode className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
                                 onClick={() => openEdit(location)}
                                 className="h-8 w-8 p-0 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-600 hover:text-blue-700 dark:hover:text-blue-400"
                               >
@@ -238,6 +255,27 @@ export default function LocationsPage() {
               </Button>
             </div>
           </form>
+        </Modal>
+
+        {/* QR Code Modal */}
+        <Modal 
+          isOpen={qrModalOpen} 
+          onClose={() => setQrModalOpen(false)} 
+          title={`QR-kode for ${selectedLocationForQR?.name}`}
+        >
+          {selectedLocationForQR && (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">
+                Skriv ut denne QR-koden og fest den på lokasjonen for enkel skanning.
+              </p>
+              <EntityQRCode
+                type="location"
+                id={selectedLocationForQR.id}
+                name={selectedLocationForQR.name}
+                additionalInfo={locationTypes[selectedLocationForQR.type as keyof typeof locationTypes]}
+              />
+            </div>
+          )}
         </Modal>
     </PageLayout>
   )

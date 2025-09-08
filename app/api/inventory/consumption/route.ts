@@ -91,7 +91,7 @@ export async function POST(req: Request) {
     if (error instanceof z.ZodError) {
       return Response.json({ 
         error: 'Ugyldig input', 
-        details: error.errors 
+        details: error.issues 
       }, { status: 400 })
     }
 

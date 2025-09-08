@@ -43,9 +43,9 @@ export async function POST(req: Request) {
   const result = await prisma.$transaction(async (tx) => {
     const receipt = await tx.receipt.create({
       data: {
-        orderId: orderId || null,
-        receivedBy: receivedBy || null,
-        notes: notes || null,
+        ...(orderId && { orderId }),
+        receivedBy,
+        ...(notes && { notes }),
         lines: {
           create: lines.map((l: any) => ({
             itemId: l.itemId,

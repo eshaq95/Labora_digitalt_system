@@ -7,10 +7,26 @@ export async function GET() {
       include: { 
         defaultLocation: true,
         department: true,
-        category: true // Oppdatert til riktig relasjonsnavnet
+        category: true,
+        lots: {
+          select: {
+            quantity: true
+          }
+        }
       },
     })
-    return Response.json(items)
+    
+    // Beregn total lagerbeholdning for hver vare
+    const itemsWithStock = items.map(item => ({
+      ...item,
+      currentStock: item.lots.reduce((sum, lot) => sum + lot.quantity, 0),
+      // Sørg for at hmsCodes er inkludert
+      hmsCodes: item.hmsCodes,
+      // Fjern lots fra respons for å redusere payload størrelse
+      lots: undefined
+    }))
+    
+    return Response.json(itemsWithStock)
   } catch (error) {
     console.error('Feil ved henting av varer:', error)
     return Response.json({ error: 'Kunne ikke laste varer' }, { status: 500 })

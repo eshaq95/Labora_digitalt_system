@@ -27,6 +27,8 @@ type FormData = {
   hmsCode: string
   storageTemp: string
   notes: string
+  // NYE FELTER:
+  standingOrderDetails: string
 }
 
 type Item = {
@@ -52,6 +54,8 @@ type Item = {
   hmsCode?: string | null
   storageTemp?: string | null
   notes?: string | null
+  // NYE FELTER:
+  standingOrderDetails?: string | null
 }
 
 type Department = { id: string; name: string; code: string }
@@ -105,7 +109,9 @@ export function ItemForm({ isOpen, onClose, editItem, onSave }: ItemFormProps) {
     hazardous: false,
     hmsCode: '',
     storageTemp: '',
-    notes: ''
+    notes: '',
+    // NYE FELTER:
+    standingOrderDetails: ''
   })
 
   const [departments, setDepartments] = useState<Department[]>([])
@@ -156,7 +162,9 @@ export function ItemForm({ isOpen, onClose, editItem, onSave }: ItemFormProps) {
         hazardous: editItem.hazardous,
         hmsCode: editItem.hmsCode || '',
         storageTemp: editItem.storageTemp || '',
-        notes: editItem.notes || ''
+        notes: editItem.notes || '',
+        // NYE FELTER:
+        standingOrderDetails: editItem.standingOrderDetails || ''
       })
     } else {
       // Reset form for new item
@@ -181,7 +189,9 @@ export function ItemForm({ isOpen, onClose, editItem, onSave }: ItemFormProps) {
         hazardous: false,
         hmsCode: '',
         storageTemp: '',
-        notes: ''
+        notes: '',
+        // NYE FELTER:
+        standingOrderDetails: ''
       })
     }
   }, [editItem])
@@ -518,6 +528,22 @@ export function ItemForm({ isOpen, onClose, editItem, onSave }: ItemFormProps) {
             onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
             placeholder="Tilleggsnotater om varen"
           />
+        </div>
+
+        {/* NYE FELTER */}
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            <Calendar className="w-4 h-4 inline mr-1" />
+            Fastbestilling
+          </label>
+          <Input
+            value={formData.standingOrderDetails}
+            onChange={(e) => setFormData(prev => ({ ...prev, standingOrderDetails: e.target.value }))}
+            placeholder="f.eks. 'Labolytic - Hver 3. måned' eller 'Thermo Fisher - Automatisk'"
+          />
+          <p className="text-xs text-text-tertiary mt-1">
+            Informasjon om stående ordre eller abonnement for denne varen
+          </p>
         </div>
 
         <div className="flex gap-3 pt-4">

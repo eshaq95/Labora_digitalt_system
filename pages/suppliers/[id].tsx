@@ -29,6 +29,8 @@ type Supplier = {
 
 type SupplierItem = {
   id: string
+  itemId: string
+  supplierId: string
   supplierPartNumber: string
   listPrice?: number
   negotiatedPrice: number
@@ -41,6 +43,11 @@ type SupplierItem = {
   minimumOrderQty?: number
   packSize?: number
   productUrl?: string
+  // NYE FELTER:
+  discountPercentage?: number | null
+  priceEvaluationStatus?: string | null
+  lastVerifiedBy?: string | null
+  supplierRole?: string | null
   item: {
     id: string
     name: string
@@ -500,6 +507,29 @@ export default function SupplierDetailPage() {
                                   📋 Avtale: {supplierItem.agreementReference}
                                 </div>
                               )}
+                              
+                              {/* NYE FELTER */}
+                              <div className="flex items-center gap-3 mt-2">
+                                {supplierItem.supplierRole && supplierItem.supplierRole !== 'PRIMARY' && (
+                                  <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded">
+                                    {supplierItem.supplierRole === 'SECONDARY' ? 'Sekundær' : 'Reserve'}
+                                  </span>
+                                )}
+                                {supplierItem.priceEvaluationStatus && (
+                                  <span className={`inline-flex items-center px-2 py-1 text-xs font-medium border rounded ${
+                                    supplierItem.priceEvaluationStatus === 'OK' ? 'bg-green-50 text-green-700 border-green-200' :
+                                    supplierItem.priceEvaluationStatus === 'Finnes Billigere' ? 'bg-red-50 text-red-700 border-red-200' :
+                                    'bg-gray-50 text-gray-700 border-gray-200'
+                                  }`}>
+                                    {supplierItem.priceEvaluationStatus}
+                                  </span>
+                                )}
+                                {supplierItem.lastVerifiedBy && (
+                                  <span className="text-xs text-text-tertiary">
+                                    Verifisert av: {supplierItem.lastVerifiedBy}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                           
@@ -512,6 +542,11 @@ export default function SupplierDetailPage() {
                               {supplierItem.listPrice && Number(supplierItem.listPrice) !== Number(supplierItem.negotiatedPrice) && (
                                 <div className="text-sm text-text-tertiary line-through">
                                   {Number(supplierItem.listPrice).toFixed(2)} {supplierItem.currency}
+                                </div>
+                              )}
+                              {supplierItem.discountPercentage && (
+                                <div className="text-xs text-green-600 dark:text-green-400">
+                                  -{supplierItem.discountPercentage}% rabatt
                                 </div>
                               )}
                               <div className="text-xs text-text-tertiary">

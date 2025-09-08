@@ -9,12 +9,22 @@ import { Modal } from '@/components/ui/modal'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useToast } from '@/components/ui/toast'
 import { motion } from 'framer-motion'
-import { Plus, Edit, Trash2, Truck, Upload, Eye } from 'lucide-react'
+import { Plus, Edit, Trash2, Truck, Upload, Eye, AlertTriangle } from 'lucide-react'
 import { useRouter } from 'next/router'
+
+type SupplierCategory = {
+  id: string
+  name: string
+  description?: string | null
+}
 
 type Supplier = {
   id: string
   name: string
+  // Category and contact fields
+  categoryId?: string | null
+  category?: SupplierCategory | null
+  generalEmail?: string | null
   // New CSV-based fields
   orderMethod?: string | null
   website?: string | null
@@ -22,7 +32,7 @@ type Supplier = {
   contactPerson?: string | null
   phone?: string | null
   username?: string | null
-  password?: string | null
+  credentialsNotes?: string | null
   notes?: string | null
   // Legacy fields (for backward compatibility)
   contactName?: string | null
@@ -34,12 +44,20 @@ type Supplier = {
   standardShippingCost?: number | null
   shippingNotes?: string | null
   orderingInstructions?: string | null
+  // New fields
+  globalDiscountCode?: string | null
+  contractId?: string | null
+  contractUrl?: string | null
+  contractExpiryDate?: string | null
+  accountNumber?: string | null
 }
 
 export default function SuppliersPage() {
   const router = useRouter()
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [categories, setCategories] = useState<SupplierCategory[]>([])
   const [search, setSearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editSupplier, setEditSupplier] = useState<Supplier | null>(null)
   const [loading, setLoading] = useState(false)
@@ -47,36 +65,56 @@ export default function SuppliersPage() {
   const [importing, setImporting] = useState(false)
   const [formData, setFormData] = useState({ 
     name: '', 
+    categoryId: '',
+    generalEmail: '',
     orderMethod: '',
     website: '', 
     orderEmail: '',
     contactPerson: '',
     phone: '',
     username: '',
-    password: '',
+    credentialsNotes: '',
     notes: '',
     freeShippingThreshold: '',
     standardShippingCost: '',
     shippingNotes: '',
-    orderingInstructions: ''
+    orderingInstructions: '',
+    // Nye felter
+    globalDiscountCode: '',
+    contractId: '',
+    contractUrl: '',
+    contractExpiryDate: '',
+    accountNumber: ''
   })
   const { showToast } = useToast()
 
-  const filteredSuppliers = suppliers.filter(supplier => 
-    supplier.name.toLowerCase().includes(search.toLowerCase()) ||
-    supplier.website?.toLowerCase().includes(search.toLowerCase()) ||
-    supplier.contactPerson?.toLowerCase().includes(search.toLowerCase()) ||
-    supplier.contactName?.toLowerCase().includes(search.toLowerCase()) ||
-    supplier.orderMethod?.toLowerCase().includes(search.toLowerCase()) ||
-    supplier.orderEmail?.toLowerCase().includes(search.toLowerCase())
-  )
+  const filteredSuppliers = suppliers.filter(supplier => {
+    const matchesSearch = supplier.name.toLowerCase().includes(search.toLowerCase()) ||
+      supplier.website?.toLowerCase().includes(search.toLowerCase()) ||
+      supplier.contactPerson?.toLowerCase().includes(search.toLowerCase()) ||
+      supplier.contactName?.toLowerCase().includes(search.toLowerCase()) ||
+      supplier.orderMethod?.toLowerCase().includes(search.toLowerCase()) ||
+      supplier.orderEmail?.toLowerCase().includes(search.toLowerCase()) ||
+      supplier.category?.name.toLowerCase().includes(search.toLowerCase())
+    
+    const matchesCategory = !categoryFilter || supplier.categoryId === categoryFilter
+    
+    return matchesSearch && matchesCategory
+  })
 
   async function load() {
     setLoading(true)
     try {
-      const res = await fetch('/api/suppliers', { cache: 'no-store' })
-      const data = await res.json()
-      setSuppliers(Array.isArray(data) ? data : [])
+      const [suppliersRes, categoriesRes] = await Promise.all([
+        fetch('/api/suppliers', { cache: 'no-store' }),
+        fetch('/api/supplier-categories', { cache: 'no-store' })
+      ])
+      
+      const suppliersData = await suppliersRes.json()
+      const categoriesData = await categoriesRes.json()
+      
+      setSuppliers(Array.isArray(suppliersData) ? suppliersData : [])
+      setCategories(Array.isArray(categoriesData) ? categoriesData : [])
     } catch {
       showToast('error', 'Kunne ikke laste leverandører')
     } finally {
@@ -99,13 +137,15 @@ export default function SuppliersPage() {
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ 
           name: formData.name.trim(),
+          categoryId: formData.categoryId || null,
+          generalEmail: formData.generalEmail || null,
           orderMethod: formData.orderMethod || null,
           website: formData.website || null,
           orderEmail: formData.orderEmail || null,
           contactPerson: formData.contactPerson || null,
           phone: formData.phone || null,
           username: formData.username || null,
-          password: formData.password || null,
+          credentialsNotes: formData.credentialsNotes || null,
           notes: formData.notes || null,
           freeShippingThreshold: formData.freeShippingThreshold ? Number(formData.freeShippingThreshold) : null,
           standardShippingCost: formData.standardShippingCost ? Number(formData.standardShippingCost) : null,
@@ -119,18 +159,26 @@ export default function SuppliersPage() {
       setEditSupplier(null)
       setFormData({ 
         name: '', 
+        categoryId: '',
+        generalEmail: '',
         orderMethod: '',
         website: '', 
         orderEmail: '',
         contactPerson: '',
         phone: '',
         username: '',
-        password: '',
+        credentialsNotes: '',
         notes: '',
         freeShippingThreshold: '',
         standardShippingCost: '',
         shippingNotes: '',
-        orderingInstructions: ''
+        orderingInstructions: '',
+        // Nye felter
+        globalDiscountCode: '',
+        contractId: '',
+        contractUrl: '',
+        contractExpiryDate: '',
+        accountNumber: ''
       })
       await load()
     } catch {
@@ -153,18 +201,26 @@ export default function SuppliersPage() {
     setEditSupplier(supplier)
     setFormData({ 
       name: supplier.name,
+      categoryId: supplier.categoryId || '',
+      generalEmail: supplier.generalEmail || '',
       orderMethod: supplier.orderMethod || '',
       website: supplier.website || '',
       orderEmail: supplier.orderEmail || '',
       contactPerson: supplier.contactPerson || '',
       phone: supplier.phone || '',
       username: supplier.username || '',
-      password: supplier.password || '',
+      credentialsNotes: supplier.credentialsNotes || '',
       notes: supplier.notes || '',
       freeShippingThreshold: supplier.freeShippingThreshold?.toString() || '',
       standardShippingCost: supplier.standardShippingCost?.toString() || '',
       shippingNotes: supplier.shippingNotes || '',
-      orderingInstructions: supplier.orderingInstructions || ''
+      orderingInstructions: supplier.orderingInstructions || '',
+      // Nye felter
+      globalDiscountCode: supplier.globalDiscountCode || '',
+      contractId: supplier.contractId || '',
+      contractUrl: supplier.contractUrl || '',
+      contractExpiryDate: supplier.contractExpiryDate ? new Date(supplier.contractExpiryDate).toISOString().split('T')[0] : '',
+      accountNumber: supplier.accountNumber || ''
     })
     setModalOpen(true)
   }
@@ -173,18 +229,26 @@ export default function SuppliersPage() {
     setEditSupplier(null)
     setFormData({ 
       name: '', 
+      categoryId: '',
+      generalEmail: '',
       orderMethod: '',
       website: '', 
       orderEmail: '',
       contactPerson: '',
       phone: '',
       username: '',
-      password: '',
+      credentialsNotes: '',
       notes: '',
       freeShippingThreshold: '',
       standardShippingCost: '',
       shippingNotes: '',
-      orderingInstructions: ''
+      orderingInstructions: '',
+      // Nye felter
+      globalDiscountCode: '',
+      contractId: '',
+      contractUrl: '',
+      contractExpiryDate: '',
+      accountNumber: ''
     })
     setModalOpen(true)
   }
@@ -254,12 +318,24 @@ export default function SuppliersPage() {
                 <Truck className="w-5 h-5" />
                 Leverandørregister
               </CardTitle>
-              <SearchInput 
-                value={search} 
-                onChange={setSearch} 
-                placeholder="Søk i leverandører..." 
-                className="w-full sm:w-80"
-              />
+              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                >
+                  <option value="">Alle kategorier</option>
+                  {categories.map(category => (
+                    <option key={category.id} value={category.id}>{category.name}</option>
+                  ))}
+                </select>
+                <SearchInput 
+                  value={search} 
+                  onChange={setSearch} 
+                  placeholder="Søk i leverandører..." 
+                  className="w-full sm:w-80"
+                />
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -282,6 +358,7 @@ export default function SuppliersPage() {
                     <TableHeader>
                       <TableRow className="bg-gray-50/50 dark:bg-gray-800/50">
                         <TableHead className="font-semibold">Navn</TableHead>
+                        <TableHead className="font-semibold">Kategori</TableHead>
                         <TableHead className="font-semibold">Bestillingsmetode</TableHead>
                         <TableHead className="font-semibold">Kontakt</TableHead>
                         <TableHead className="font-semibold">Frakt</TableHead>
@@ -309,6 +386,24 @@ export default function SuppliersPage() {
                                 >
                                   Nettside
                                 </a>
+                              )}
+                              {/* Indikator for bestillingsinstruksjoner */}
+                              {supplier.orderingInstructions && (
+                                <div className="text-amber-600 text-xs font-semibold flex items-center gap-1 mt-1" title={supplier.orderingInstructions}>
+                                  <AlertTriangle className="w-3 h-3" /> 
+                                  Viktige instruksjoner
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              {supplier.category ? (
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
+                                  {supplier.category.name}
+                                </span>
+                              ) : (
+                                <span className="text-gray-500">—</span>
                               )}
                             </div>
                           </TableCell>
@@ -398,154 +493,244 @@ export default function SuppliersPage() {
           title={editSupplier ? 'Rediger leverandør' : 'Ny leverandør'}
           size="lg"
         >
-          <form onSubmit={save} className="space-y-4">
+          <form onSubmit={save} className="space-y-6">
             {/* Grunnleggende informasjon */}
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Leverandørnavn <span className="text-red-500">*</span>
-              </label>
-              <Input 
-                value={formData.name} 
-                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} 
-                placeholder="Leverandørnavn" 
-                required 
-              />
-            </div>
-
-            {/* Bestillingsmetoder */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Bestillingsmetode</label>
-                <select
-                  value={formData.orderMethod}
-                  onChange={(e) => setFormData(prev => ({ ...prev, orderMethod: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Velg metode</option>
-                  <option value="Web">Web/Nettside</option>
-                  <option value="E-post">E-post</option>
-                  <option value="Telefon">Telefon</option>
-                  <option value="Portal">Portal/System</option>
-                  <option value="Annet">Annet</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Nettside/Webshop</label>
-                <Input 
-                  value={formData.website} 
-                  onChange={(e) => setFormData(prev => ({ ...prev, website: e.target.value }))} 
-                  placeholder="https://..." 
-                />
+            <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Grunnleggende informasjon</h4>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Leverandørnavn <span className="text-red-500">*</span>
+                  </label>
+                  <Input 
+                    value={formData.name} 
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} 
+                    placeholder="Leverandørnavn" 
+                    required 
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Kategori</label>
+                  <select
+                    value={formData.categoryId}
+                    onChange={(e) => setFormData(prev => ({ ...prev, categoryId: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Velg kategori</option>
+                    {categories.map(category => (
+                      <option key={category.id} value={category.id}>{category.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 
-            {/* Kontaktinformasjon */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Bestilling E-post</label>
-                <Input 
-                  type="email"
-                  value={formData.orderEmail} 
-                  onChange={(e) => setFormData(prev => ({ ...prev, orderEmail: e.target.value }))} 
-                  placeholder="bestilling@leverandor.no" 
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Vår kontaktperson</label>
-                <Input 
-                  value={formData.contactPerson} 
-                  onChange={(e) => setFormData(prev => ({ ...prev, contactPerson: e.target.value }))} 
-                  placeholder="Navn på kontaktperson" 
-                />
+            {/* Kontakt og Bestilling */}
+            <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Kontakt og Bestilling</h4>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Bestillingsmetode</label>
+                    <select
+                      value={formData.orderMethod}
+                      onChange={(e) => setFormData(prev => ({ ...prev, orderMethod: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Velg metode</option>
+                      <option value="Web">Web/Nettside</option>
+                      <option value="E-post">E-post</option>
+                      <option value="Telefon">Telefon</option>
+                      <option value="Portal">Portal/System</option>
+                      <option value="Annet">Annet</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Nettside/Webshop</label>
+                    <Input 
+                      value={formData.website} 
+                      onChange={(e) => setFormData(prev => ({ ...prev, website: e.target.value }))} 
+                      placeholder="https://..." 
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Generell E-post</label>
+                    <Input 
+                      type="email"
+                      value={formData.generalEmail} 
+                      onChange={(e) => setFormData(prev => ({ ...prev, generalEmail: e.target.value }))} 
+                      placeholder="info@leverandor.no" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Bestilling E-post</label>
+                    <Input 
+                      type="email"
+                      value={formData.orderEmail} 
+                      onChange={(e) => setFormData(prev => ({ ...prev, orderEmail: e.target.value }))} 
+                      placeholder="bestilling@leverandor.no" 
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Vår kontaktperson</label>
+                    <Input 
+                      value={formData.contactPerson} 
+                      onChange={(e) => setFormData(prev => ({ ...prev, contactPerson: e.target.value }))} 
+                      placeholder="Navn på kontaktperson" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Telefon</label>
+                    <Input 
+                      value={formData.phone} 
+                      onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))} 
+                      placeholder="+47 xx xx xx xx" 
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">Telefon</label>
-              <Input 
-                value={formData.phone} 
-                onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))} 
-                placeholder="+47 xx xx xx xx" 
-              />
-            </div>
-
-            {/* Innloggingsinformasjon */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Brukernavn (webshop)</label>
-                <Input 
-                  value={formData.username} 
-                  onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))} 
-                  placeholder="Brukernavn for webshop" 
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Passord (webshop)</label>
-                <Input 
-                  type="password"
-                  value={formData.password} 
-                  onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))} 
-                  placeholder="••••••••" 
-                />
-                <p className="text-xs text-amber-600 mt-1">⚠️ Vurder sikkerhet ved lagring av passord</p>
-              </div>
-            </div>
-
-            {/* Fraktinformasjon */}
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-              <h4 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">Fraktbetingelser</h4>
+            {/* Webshop Innlogging */}
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-green-800 dark:text-green-200 mb-3">🔒 Webshop Innlogging (Sikker)</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium mb-1">Grense for gratis frakt (NOK)</label>
+                  <label className="block text-sm font-medium mb-2">Brukernavn (webshop)</label>
                   <Input 
-                    type="number"
-                    step="0.01"
-                    value={formData.freeShippingThreshold} 
-                    onChange={(e) => setFormData(prev => ({ ...prev, freeShippingThreshold: e.target.value }))} 
-                    placeholder="2500.00" 
+                    value={formData.username} 
+                    onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))} 
+                    placeholder="Brukernavn for webshop" 
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium mb-1">Standard fraktkostnad (NOK)</label>
+                  <label className="block text-sm font-medium mb-2">Innloggingsinstruksjoner</label>
                   <Input 
-                    type="number"
-                    step="0.01"
-                    value={formData.standardShippingCost} 
-                    onChange={(e) => setFormData(prev => ({ ...prev, standardShippingCost: e.target.value }))} 
-                    placeholder="150.00" 
+                    value={formData.credentialsNotes} 
+                    onChange={(e) => setFormData(prev => ({ ...prev, credentialsNotes: e.target.value }))} 
+                    placeholder="F.eks. 'Bruk felles innlogging' eller 'Se IT for tilgang'" 
                   />
+                  <p className="text-xs text-green-600 dark:text-green-400 mt-1">✅ Passord lagres sikkert i ekstern vault</p>
                 </div>
-              </div>
-              <div className="mt-3">
-                <label className="block text-xs font-medium mb-1">Fraktnotater</label>
-                <Input 
-                  value={formData.shippingNotes} 
-                  onChange={(e) => setFormData(prev => ({ ...prev, shippingNotes: e.target.value }))} 
-                  placeholder="Spesielle betingelser, miljøgebyr, etc." 
-                />
               </div>
             </div>
 
-            {/* Bestillingsinstruksjoner */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Bestillingsinstruksjoner</label>
-              <Input 
-                value={formData.orderingInstructions} 
-                onChange={(e) => setFormData(prev => ({ ...prev, orderingInstructions: e.target.value }))} 
-                placeholder="F.eks. 'Husk å alltid oppgi fakturareferanse XXX'" 
-              />
+            {/* Frakt og Avtaler */}
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-3">🚚 Frakt og Avtaler</h4>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Grense for gratis frakt (NOK)</label>
+                    <Input 
+                      type="number"
+                      step="0.01"
+                      value={formData.freeShippingThreshold} 
+                      onChange={(e) => setFormData(prev => ({ ...prev, freeShippingThreshold: e.target.value }))} 
+                      placeholder="2500.00" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Standard fraktkostnad (NOK)</label>
+                    <Input 
+                      type="number"
+                      step="0.01"
+                      value={formData.standardShippingCost} 
+                      onChange={(e) => setFormData(prev => ({ ...prev, standardShippingCost: e.target.value }))} 
+                      placeholder="150.00" 
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Fraktnotater</label>
+                  <Input 
+                    value={formData.shippingNotes} 
+                    onChange={(e) => setFormData(prev => ({ ...prev, shippingNotes: e.target.value }))} 
+                    placeholder="Spesielle betingelser, miljøgebyr, etc." 
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">⚠️ Bestillingsinstruksjoner</label>
+                  <Input 
+                    value={formData.orderingInstructions} 
+                    onChange={(e) => setFormData(prev => ({ ...prev, orderingInstructions: e.target.value }))} 
+                    placeholder="F.eks. 'Husk å alltid oppgi fakturareferanse XXX'" 
+                  />
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Viktige instruksjoner som vises i leverandørlisten</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Kontoinfo og Avtaler */}
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-green-800 dark:text-green-200 mb-3">📋 Kontoinfo og Avtaler</h4>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Vårt kundenummer</label>
+                    <Input 
+                      value={formData.accountNumber} 
+                      onChange={(e) => setFormData(prev => ({ ...prev, accountNumber: e.target.value }))} 
+                      placeholder="Kundenummer hos leverandør" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Global rabattkode</label>
+                    <Input 
+                      value={formData.globalDiscountCode} 
+                      onChange={(e) => setFormData(prev => ({ ...prev, globalDiscountCode: e.target.value }))} 
+                      placeholder="LABORA2024" 
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Kontrakt-ID</label>
+                    <Input 
+                      value={formData.contractId} 
+                      onChange={(e) => setFormData(prev => ({ ...prev, contractId: e.target.value }))} 
+                      placeholder="Avtale-/kontraktnummer" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Kontraktutløp</label>
+                    <Input 
+                      type="date"
+                      value={formData.contractExpiryDate} 
+                      onChange={(e) => setFormData(prev => ({ ...prev, contractExpiryDate: e.target.value }))} 
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Link til kontrakt/avtale</label>
+                  <Input 
+                    value={formData.contractUrl} 
+                    onChange={(e) => setFormData(prev => ({ ...prev, contractUrl: e.target.value }))} 
+                    placeholder="https://..." 
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Notater */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Notater</label>
-              <textarea
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm"
-                rows={3}
-                value={formData.notes}
-                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                placeholder="Generelle notater, avtaledetaljer, produktinfo..."
-              />
+            <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">📝 Notater</h4>
+              <div>
+                <label className="block text-sm font-medium mb-2">Generelle notater</label>
+                <textarea
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm"
+                  rows={3}
+                  value={formData.notes}
+                  onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Avtaledetaljer, produktinfo, spesielle betingelser..."
+                />
+              </div>
             </div>
 
             <div className="flex gap-3 pt-4">
@@ -580,7 +765,7 @@ export default function SuppliersPage() {
                 <li>• <strong>Vår kontaktperson</strong> - Kontaktperson</li>
                 <li>• <strong>Telefon</strong> - Telefonnummer</li>
                 <li>• <strong>Brukernavn</strong> - Webshop brukernavn</li>
-                <li>• <strong>Passord</strong> - Webshop passord</li>
+                <li>• <strong>Innloggingsinstruksjoner</strong> - Tilgangsinformasjon</li>
                 <li>• <strong>Info om pris, frakt, avtale, rabatt</strong> - Avtaleinfo</li>
                 <li>• <strong>Produkter</strong> - Produktinformasjon</li>
               </ul>

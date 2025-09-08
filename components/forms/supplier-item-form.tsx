@@ -18,6 +18,11 @@ type FormData = {
   isPrimarySupplier: boolean
   minimumOrderQty: number | null
   packSize: number | null
+  // NYE FELTER:
+  discountPercentage: number | null
+  priceEvaluationStatus: string
+  lastVerifiedBy: string
+  supplierRole: string
 }
 
 type Item = { id: string; name: string; sku: string }
@@ -37,15 +42,23 @@ type SupplierItem = {
   minimumOrderQty?: number | null
   packSize?: number | null
   lastVerifiedDate: string
+  // NYE FELTER:
+  discountPercentage?: number | null
+  priceEvaluationStatus?: string | null
+  lastVerifiedBy?: string | null
+  supplierRole?: string | null
 }
 
 interface SupplierItemFormProps {
-  isOpen: boolean
-  onClose: () => void
+  isOpen?: boolean
+  onClose?: () => void
   editSupplierItem?: SupplierItem | null
   onSave: () => void
+  onCancel?: () => void
   preselectedItem?: { id: string; name: string }
   preselectedSupplier?: { id: string; name: string }
+  // Legacy props for backwards compatibility
+  supplierId?: string
 }
 
 export function SupplierItemForm({ 
@@ -53,8 +66,10 @@ export function SupplierItemForm({
   onClose, 
   editSupplierItem, 
   onSave,
+  onCancel,
   preselectedItem,
-  preselectedSupplier
+  preselectedSupplier,
+  supplierId
 }: SupplierItemFormProps) {
   const [formData, setFormData] = useState<FormData>({
     itemId: '',
@@ -68,7 +83,12 @@ export function SupplierItemForm({
     priceValidUntil: '',
     isPrimarySupplier: false,
     minimumOrderQty: null,
-    packSize: null
+    packSize: null,
+    // NYE FELTER:
+    discountPercentage: null,
+    priceEvaluationStatus: '',
+    lastVerifiedBy: '',
+    supplierRole: 'PRIMARY'
   })
 
   const [items, setItems] = useState<Item[]>([])
@@ -104,13 +124,18 @@ export function SupplierItemForm({
         priceValidUntil: editSupplierItem.priceValidUntil ? editSupplierItem.priceValidUntil.split('T')[0] : '',
         isPrimarySupplier: editSupplierItem.isPrimarySupplier,
         minimumOrderQty: editSupplierItem.minimumOrderQty ?? null,
-        packSize: editSupplierItem.packSize ?? null
+        packSize: editSupplierItem.packSize ?? null,
+        // NYE FELTER:
+        discountPercentage: editSupplierItem.discountPercentage ?? null,
+        priceEvaluationStatus: editSupplierItem.priceEvaluationStatus || '',
+        lastVerifiedBy: editSupplierItem.lastVerifiedBy || '',
+        supplierRole: editSupplierItem.supplierRole || 'PRIMARY'
       })
     } else {
       // Reset form and apply preselections
       setFormData({
         itemId: preselectedItem?.id || '',
-        supplierId: preselectedSupplier?.id || '',
+        supplierId: preselectedSupplier?.id || supplierId || '',
         supplierPartNumber: '',
         productUrl: '',
         listPrice: null,
@@ -120,7 +145,12 @@ export function SupplierItemForm({
         priceValidUntil: '',
         isPrimarySupplier: false,
         minimumOrderQty: null,
-        packSize: null
+        packSize: null,
+        // NYE FELTER:
+        discountPercentage: null,
+        priceEvaluationStatus: '',
+        lastVerifiedBy: '',
+        supplierRole: 'PRIMARY'
       })
     }
   }, [editSupplierItem, preselectedItem, preselectedSupplier])
@@ -144,7 +174,12 @@ export function SupplierItemForm({
         negotiatedPrice: Number(formData.negotiatedPrice),
         minimumOrderQty: formData.minimumOrderQty || null,
         packSize: formData.packSize || null,
-        priceValidUntil: formData.priceValidUntil || null
+        priceValidUntil: formData.priceValidUntil || null,
+        // NYE FELTER:
+        discountPercentage: formData.discountPercentage || null,
+        priceEvaluationStatus: formData.priceEvaluationStatus || null,
+        lastVerifiedBy: formData.lastVerifiedBy || null,
+        supplierRole: formData.supplierRole || 'PRIMARY'
       }
       
       const response = await fetch(url, {
@@ -160,7 +195,7 @@ export function SupplierItemForm({
 
       showToast('success', editSupplierItem ? 'Pris oppdatert' : 'Leverandørpris opprettet')
       onSave()
-      onClose()
+      if (onClose) onClose()
     } catch (error: any) {
       showToast('error', `Feil: ${error.message}`)
     } finally {
@@ -172,7 +207,7 @@ export function SupplierItemForm({
     new Date(editSupplierItem.lastVerifiedDate) < new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000) : false
 
   return (
-    <Modal open={isOpen} onClose={onClose} title={editSupplierItem ? 'Rediger leverandørpris' : 'Ny leverandørpris'} size="lg">
+    <Modal open={isOpen || false} onClose={onClose || (() => {})} title={editSupplierItem ? 'Rediger leverandørpris' : 'Ny leverandørpris'} size="lg">
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Advarsel om utdaterte priser */}
         {isOutdated && (
@@ -191,201 +226,11 @@ export function SupplierItemForm({
           </div>
         )}
 
-        {/* Grunnleggende kobling */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              Vare <span className="text-red-500">*</span>
-            </label>
-            <select
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
-              value={formData.itemId}
-              onChange={(e) => setFormData(prev => ({ ...prev, itemId: e.target.value }))}
-              required
-              disabled={!!preselectedItem}
-            >
-              <option value="">Velg vare</option>
-              {items.map(item => (
-                <option key={item.id} value={item.id}>
-                  {item.name} ({item.sku})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              Leverandør <span className="text-red-500">*</span>
-            </label>
-            <select
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
-              value={formData.supplierId}
-              onChange={(e) => setFormData(prev => ({ ...prev, supplierId: e.target.value }))}
-              required
-              disabled={!!preselectedSupplier}
-            >
-              <option value="">Velg leverandør</option>
-              {suppliers.map(supplier => (
-                <option key={supplier.id} value={supplier.id}>
-                  {supplier.name} {supplier.shortCode && `(${supplier.shortCode})`}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Leverandør-spesifikk informasjon */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              Leverandørens artikkelnummer <span className="text-red-500">*</span>
-            </label>
-            <Input
-              value={formData.supplierPartNumber}
-              onChange={(e) => setFormData(prev => ({ ...prev, supplierPartNumber: e.target.value }))}
-              placeholder="f.eks. 09991274"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2">Produktlink</label>
-            <Input
-              type="url"
-              value={formData.productUrl}
-              onChange={(e) => setFormData(prev => ({ ...prev, productUrl: e.target.value }))}
-              placeholder="https://..."
-            />
-          </div>
-        </div>
-
-        {/* Prisstruktur */}
-        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-          <h4 className="flex items-center gap-2 text-sm font-semibold text-green-800 dark:text-green-200 mb-3">
-            <DollarSign className="w-4 h-4" />
-            Prisstruktur (NOK)
-          </h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Listepris (før rabatt)</label>
-              <Input
-                type="number"
-                step="0.01"
-                value={formData.listPrice || ''}
-                onChange={(e) => setFormData(prev => ({ 
-                  ...prev, 
-                  listPrice: e.target.value ? Number(e.target.value) : null 
-                }))}
-                placeholder="0.00"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Laboras pris (etter rabatt) <span className="text-red-500">*</span>
-              </label>
-              <Input
-                type="number"
-                step="0.01"
-                value={formData.negotiatedPrice}
-                onChange={(e) => setFormData(prev => ({ 
-                  ...prev, 
-                  negotiatedPrice: Number(e.target.value) 
-                }))}
-                placeholder="0.00"
-                required
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Avtaler og koder */}
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-          <h4 className="flex items-center gap-2 text-sm font-semibold text-blue-800 dark:text-blue-200 mb-3">
-            <AlertTriangle className="w-4 h-4" />
-            Avtaler og rabattkoder (Kritisk!)
-          </h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Påkrevd rabattkode</label>
-              <Input
-                value={formData.discountCodeRequired}
-                onChange={(e) => setFormData(prev => ({ ...prev, discountCodeRequired: e.target.value }))}
-                placeholder="f.eks. Ref: 09991274"
-              />
-              <p className="text-xs text-blue-600 mt-1">
-                Koden som MÅ oppgis ved bestilling for å få riktig pris
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">Avtalereferanse</label>
-              <Input
-                value={formData.agreementReference}
-                onChange={(e) => setFormData(prev => ({ ...prev, agreementReference: e.target.value }))}
-                placeholder="f.eks. Labforum 2025"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Gyldighet og metadata */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              <Calendar className="w-4 h-4 inline mr-1" />
-              Pris gyldig til
-            </label>
-            <Input
-              type="date"
-              value={formData.priceValidUntil}
-              onChange={(e) => setFormData(prev => ({ ...prev, priceValidUntil: e.target.value }))}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2">Minimum bestillingsantall</label>
-            <Input
-              type="number"
-              value={formData.minimumOrderQty || ''}
-              onChange={(e) => setFormData(prev => ({ 
-                ...prev, 
-                minimumOrderQty: e.target.value ? Number(e.target.value) : null 
-              }))}
-              placeholder="1"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2">Pakningsstørrelse</label>
-            <Input
-              type="number"
-              value={formData.packSize || ''}
-              onChange={(e) => setFormData(prev => ({ 
-                ...prev, 
-                packSize: e.target.value ? Number(e.target.value) : null 
-              }))}
-              placeholder="f.eks. 48"
-            />
-          </div>
-        </div>
-
-        {/* Primær leverandør */}
-        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={formData.isPrimarySupplier}
-              onChange={(e) => setFormData(prev => ({ ...prev, isPrimarySupplier: e.target.checked }))}
-              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-            />
-            <Star className="w-4 h-4 text-yellow-600" />
-            <span className="text-sm font-medium">Sett som primær leverandør</span>
-          </label>
-          <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1 ml-6">
-            Primær leverandør vises først i bestillinger og får automatiske forslag
-          </p>
-        </div>
-
         <div className="flex gap-3 pt-4">
           <Button type="submit" disabled={loading} className="flex-1">
             {loading ? 'Lagrer...' : (editSupplierItem ? 'Oppdater pris' : 'Opprett leverandørpris')}
           </Button>
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={onCancel || onClose}>
             Avbryt
           </Button>
         </div>

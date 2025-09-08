@@ -63,6 +63,7 @@ model User {
   id              String    @id @default(cuid())
   email           String    @unique
   name            String
+  password        String    // Hashed password
   role            Role      @default(LAB_USER)
   isActive        Boolean   @default(true)
   lastLoginAt     DateTime?
@@ -74,19 +75,64 @@ model User {
   countingSessionsPlanned CycleCountingSession[] @relation("PlannedBy")
   countingSessionsCounted CycleCountingSession[] @relation("CountedBy") 
   countingSessionsApproved CycleCountingSession[] @relation("ApprovedBy")
+  attachmentsUploaded     Attachment[]
   countingLines          CycleCountingLine[]
   
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
 
+model SupplierCategory {
+  id          String @id @default(cuid())
+  name        String @unique
+  description String? @db.Text
+  
+  suppliers   Supplier[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CompanySettings {
+  id                    String @id @default(cuid())
+  
+  // Bedriftsinformasjon
+  companyName           String @default("Labora Digital")
+  organizationNumber    String?
+  
+  // Leveringsadresse
+  deliveryAddress       String? @db.Text
+  deliveryPostalCode    String?
+  deliveryCity          String?
+  deliveryCountry       String? @default("Norge")
+  
+  // Fakturaadresse
+  invoiceAddress        String? @db.Text
+  invoicePostalCode     String?
+  invoiceCity           String?
+  invoiceCountry        String? @default("Norge")
+  
+  // Kontaktinformasjon
+  phone                 String?
+  email                 String?
+  website               String?
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
 model Supplier {
   id                     String   @id @default(cuid())
-  name                   String   @unique
+  name                   String
+  
+  // Kategorisering
+  categoryId             String?
+  category               SupplierCategory? @relation(fields: [categoryId], references: [id])
   
   // Bestillingsmetoder og kontakt (fra CSV)
   orderMethod            String?  @db.Text            // Ordre via (Web, E-post, etc.)
   website                String?  @db.Text            // Nettside/webshop
+  generalEmail           String?  @db.Text            // Generell e-post (info@, support@)
   orderEmail             String?  @db.Text            // Bestilling E-post
   contactPerson          String?  @db.Text            // Vår kontaktperson
   phone                  String?  @db.Text            // Telefon
@@ -116,6 +162,14 @@ model Supplier {
   
   // Bestillingsinstruksjoner (Forhindrer feil)
   orderingInstructions   String?  @db.Text            // F.eks. "Husk fakturareferanse XXX"
+  
+  // Nye felter for leverandørhåndtering
+  globalDiscountCode     String?  @db.Text            // Global rabattkode for denne leverandøren
+  
+  // Avtaler og kontrakter
+  contractId             String?  @db.Text            // Kontraktnummer/avtale-ID
+  contractUrl            String?  @db.Text            // Link til avtale/kontrakt
+  contractExpiryDate     DateTime?                    // Når avtalen utløper
 
   items                  Item[]
   supplierItems          SupplierItem[]  // Ny prisbok-relasjon
@@ -123,14 +177,66 @@ model Supplier {
   purchaseOrders         PurchaseOrder[]
   receipts              Receipt[]
 
+  // Relasjoner til nye modeller
+  contacts               ContactPerson[]
+  attachments            Attachment[]
+
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
+
+  @@unique([name, categoryId])
+}
+
+// Flere kontaktpersoner per leverandør
+model ContactPerson {
+  id          String   @id @default(cuid())
+  supplierId  String
+  supplier    Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  
+  name        String   @db.Text
+  role        String?  @db.Text  // F.eks. "Salgsansvarlig", "Teknisk support"
+  email       String?  @db.Text
+  phone       String?  @db.Text
+  isPrimary   Boolean  @default(false)  // Primær kontaktperson
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Vedlegg/filer knyttet til leverandører
+model Attachment {
+  id          String   @id @default(cuid())
+  supplierId  String
+  supplier    Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  
+  filename    String   @db.Text
+  originalName String  @db.Text
+  mimeType    String   @db.Text
+  size        Int                      // Filstørrelse i bytes
+  url         String   @db.Text        // Sti til filen
+  description String?  @db.Text        // Beskrivelse av vedlegget
+  category    AttachmentCategory @default(OTHER)
+  
+  uploadedBy  String?
+  uploader    User?    @relation(fields: [uploadedBy], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum AttachmentCategory {
+  CONTRACT     // Kontrakt/avtale
+  PRICE_LIST   // Prisliste
+  CERTIFICATE  // Sertifikat
+  MANUAL       // Brukermanual
+  OTHER        // Annet
 }
 
 model Location {
   id        String       @id @default(cuid())
   name      String       @unique
   code      String?      @unique
+  qrCode    String?      @unique              // QR-kode for lokasjon
   type      LocationType @default(MAIN)
   notes     String?      @db.Text
 
@@ -201,6 +307,12 @@ model SupplierItem {
   discountNotes      String?  @db.Text  // % rabatt details
   priceCheckSignature String? @db.Text  // Pris-sjekk Sign. (raw text before parsing)
 
+  // MANGLENDE FELTER - Innkjøpsdetaljer og Prisstyring
+  discountPercentage  Decimal? @db.Decimal(5, 2) // Eksplisitt rabatt % (f.eks. 30.00 for 30%)
+  priceEvaluationStatus String? @db.Text          // "Ikke vurdert", "Finnes Billigere", "OK"
+  lastVerifiedBy      String?  @db.Text          // Initialer til den som sjekket prisen (f.eks. "ILK")
+  supplierRole        String?  @default("PRIMARY") // "PRIMARY", "SECONDARY", "BACKUP"
+
   // Vedlikehold og Gyldighet
   priceValidUntil     DateTime? // For tidsbegrensede tilbud
   lastVerifiedDate    DateTime @default(now()) @updatedAt // Når ble prisen sist bekreftet?
@@ -256,8 +368,12 @@ model Item {
   expiryTracking  Boolean      @default(false)      // Krever_Utløpsdato
   hazardous       Boolean      @default(false)      // HMS_Sikkerhet
   
+  // MANGLENDE FELTER - Innkjøpsprosess
+  standingOrderDetails String? @db.Text             // Fastbestilling info (f.eks. "Labolytic", "Hver 3. mnd")
+  
   // Tilleggsinformasjon
-  barcode         String?
+  barcode         String?      @unique              // Leverandørens strekkode (1D)
+  qrCode          String?      @unique              // Intern QR-kode (2D) 
   storageTemp     String?      @db.Text
   hmsCode         String?      @db.Text             // HMS-koder (legacy - use hmsCodes)
   notes           String?      @db.Text

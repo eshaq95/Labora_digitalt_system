@@ -6,8 +6,10 @@ import { PageLayout } from '@/components/layout/page-layout'
 import { SearchInput } from '@/components/ui/search-input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useToast } from '@/components/ui/toast'
+import { BarcodeScanner } from '@/components/ui/barcode-scanner'
 import { motion } from 'framer-motion'
-import { Package, AlertTriangle, Clock, Filter } from 'lucide-react'
+import { Package, AlertTriangle, Clock, Filter, Scan } from 'lucide-react'
+import { ScanResult } from '@/app/api/scan-lookup/route'
 
 type InventoryLot = {
   id: string
@@ -35,6 +37,7 @@ export default function InventoryPage() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [filter, setFilter] = useState<'all' | 'lowStock' | 'expiring'>('all')
+  const [scannerOpen, setScannerOpen] = useState(false)
   const { showToast } = useToast()
 
   const filteredInventory = inventory.filter(lot => 
@@ -63,7 +66,41 @@ export default function InventoryPage() {
 
   useEffect(() => { load() }, [filter])
 
+  const handleScanSuccess = (result: ScanResult) => {
+    switch (result.type) {
+      case 'LOT':
+        // Finn og highlight det spesifikke partiet
+        const lotId = result.data.id;
+        const lotElement = document.getElementById(`lot-${lotId}`);
+        if (lotElement) {
+          lotElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          lotElement.classList.add('bg-blue-100', 'border-blue-300');
+          setTimeout(() => {
+            lotElement.classList.remove('bg-blue-100', 'border-blue-300');
+          }, 3000);
+        }
+        showToast('success', `Parti funnet: ${result.data.item.name}`);
+        break;
+      
+      case 'ITEM':
+        // Filtrer på varen
+        setSearch(result.data.name);
+        showToast('success', `Viser lager for: ${result.data.name}`);
+        break;
+      
+      case 'LOCATION':
+        // Filtrer på lokasjon (vi kan utvide dette senere)
+        showToast('success', `Lokasjon skannet: ${result.data.name}`);
+        break;
+      
+      default:
+        showToast('error', result.message || 'Ukjent kode');
+    }
+  };
+
+  // Funksjon for å sjekke om en individuell lot har lav beholdning (for visning)
   const isLowStock = (lot: InventoryLot) => lot.quantity <= lot.item.minStock
+  
   const isExpiringSoon = (lot: InventoryLot) => {
     if (!lot.expiryDate) return false
     const expiryDate = new Date(lot.expiryDate)
@@ -72,8 +109,20 @@ export default function InventoryPage() {
     return expiryDate <= thirtyDaysFromNow
   }
 
-  const totalItems = inventory.length
-  const lowStockCount = inventory.filter(isLowStock).length
+  // Beregn totale enheter (sum av alle quantities)
+  const totalUnits = inventory.reduce((sum, lot) => sum + lot.quantity, 0)
+  
+  // Beregn lav beholdning basert på total per vare (for statistikk), ikke per lot
+  const itemStockMap = new Map<string, { total: number; minStock: number }>()
+  inventory.forEach(lot => {
+    const existing = itemStockMap.get(lot.item.id) || { total: 0, minStock: lot.item.minStock }
+    existing.total += lot.quantity
+    itemStockMap.set(lot.item.id, existing)
+  })
+  
+  // Antall VARER (ikke lots) med lav total beholdning
+  const lowStockItems = Array.from(itemStockMap.entries()).filter(([_, stock]) => stock.total <= stock.minStock)
+  const lowStockCount = lowStockItems.length
   const expiringCount = inventory.filter(isExpiringSoon).length
 
   return (
@@ -91,8 +140,8 @@ export default function InventoryPage() {
                   <Package className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Totale lagerenheter</p>
-                  <p className="text-2xl font-bold">{totalItems}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Totale enheter</p>
+                  <p className="text-2xl font-bold">{totalUnits}</p>
                 </div>
               </div>
             </CardContent>
@@ -162,12 +211,22 @@ export default function InventoryPage() {
                     Utløper snart
                   </Button>
                 </div>
-                <SearchInput 
-                  value={search} 
-                  onChange={setSearch} 
-                  placeholder="Søk i lager..." 
-                  className="w-full sm:w-80"
-                />
+                <div className="flex space-x-2 w-full sm:w-auto">
+                  <SearchInput 
+                    value={search} 
+                    onChange={setSearch} 
+                    placeholder="Søk i lager..." 
+                    className="flex-1 sm:w-80"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => setScannerOpen(true)}
+                    className="flex items-center space-x-2"
+                  >
+                    <Scan className="h-4 w-4" />
+                    <span className="hidden sm:inline">Skann</span>
+                  </Button>
+                </div>
               </div>
             </div>
           </CardHeader>
@@ -201,6 +260,7 @@ export default function InventoryPage() {
                       {filteredInventory.map((lot, index) => (
                         <motion.tr
                           key={lot.id}
+                          id={`lot-${lot.id}`}
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: index * 0.05 }}
@@ -281,6 +341,15 @@ export default function InventoryPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Barcode Scanner Modal */}
+        <BarcodeScanner
+          isOpen={scannerOpen}
+          onClose={() => setScannerOpen(false)}
+          onScanSuccess={handleScanSuccess}
+          title="Skann Lager"
+          description="Skann strekkode eller QR-kode for å finne varer, partier eller lokasjoner"
+        />
     </PageLayout>
   )
 }

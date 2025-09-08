@@ -189,8 +189,8 @@ export async function POST(req: Request) {
     
     for (const supplierData of processedSuppliers) {
       try {
-        // Try to find existing supplier by name
-        const existing = await prisma.supplier.findUnique({
+        // Try to find existing supplier by name (since name is no longer unique, use findFirst)
+        const existing = await prisma.supplier.findFirst({
           where: { name: supplierData.name }
         })
         

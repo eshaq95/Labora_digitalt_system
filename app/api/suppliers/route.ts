@@ -1,7 +1,12 @@
 import { prisma } from '@/lib/prisma'
 
 export async function GET() {
-  const suppliers = await prisma.supplier.findMany({ orderBy: { name: 'asc' } })
+  const suppliers = await prisma.supplier.findMany({ 
+    orderBy: { name: 'asc' },
+    include: {
+      category: true
+    }
+  })
   return Response.json(suppliers)
 }
 
@@ -9,8 +14,10 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const { 
     name, 
+    // Category and contact fields
+    categoryId, generalEmail,
     // New CSV-based fields
-    orderMethod, website, orderEmail, contactPerson, phone, username, password, notes,
+    orderMethod, website, orderEmail, contactPerson, phone, username, credentialsNotes, notes,
     // Legacy fields (for backward compatibility)
     contactName, contactEmail, contactPhone, orderingMethod,
     // Freight fields
@@ -24,6 +31,9 @@ export async function POST(req: Request) {
   const supplier = await prisma.supplier.create({
     data: {
       name: name.trim(),
+      // Category and contact fields
+      categoryId: categoryId || null,
+      generalEmail: generalEmail || null,
       // New CSV-based fields
       orderMethod: orderMethod || null,
       website: website || null,
@@ -31,7 +41,7 @@ export async function POST(req: Request) {
       contactPerson: contactPerson || null,
       phone: phone || null,
       username: username || null,
-      password: password || null,
+      credentialsNotes: credentialsNotes || null,
       notes: notes || null,
       // Legacy fields (fallback for backward compatibility)
       contactName: contactName || contactPerson || null,
@@ -44,6 +54,9 @@ export async function POST(req: Request) {
       shippingNotes: shippingNotes || null,
       orderingInstructions: orderingInstructions || null,
     },
+    include: {
+      category: true
+    }
   })
   return Response.json(supplier, { status: 201 })
 }

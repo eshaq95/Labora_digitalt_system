@@ -23,19 +23,21 @@ const CSV_COLUMN_MAPPING = {
   'Pris inkl. rabatt': '_price',
   'Pris-sjekk Sign.': 'priceCheckSignature',
   'Prisavtale': 'agreementReference',
-  '% rabatt': 'discountNotes',
+  '% rabatt': '_discountPercentage',        // OPPDATERT: Parse som prosent
   'Forpakning': 'packageDescription',
   'Enhet per pk': '_quantityPerPackage',
   'Link /vedlegg': 'productUrl',
+  'Vurdering pris': 'priceEvaluationStatus', // NY: Ikke ignorer lenger
+  'Valg leverandør': '_supplierRole',        // NY: Parse leverandørrolle
+  
+  // Item-specific data (Item model)
+  'Fastbestilling': 'standingOrderDetails', // NY: Ikke ignorer lenger
   
   // Workflow columns to IGNORE (these belong in ordering system, not master data)
   '1.Bestill antall': null,
   '2.Velg prioritet': null,
   '3.Klikk her': null,
-  'Fastbestilling': null,
   'Varetelling': null,
-  'Vurdering pris': null,
-  'Valg leverandør': null,
   'Subitems': null,
   'Last Updated': null
 }
@@ -79,6 +81,36 @@ function parseDate(dateString: string): Date | null {
   }
   
   return null
+}
+
+function parseDiscountPercentage(discountString: string): number | null {
+  if (!discountString || typeof discountString !== 'string') return null
+  
+  // Parse strings like "30 %", "38,12 %", "?" 
+  const cleaned = discountString.replace(/[^\d,.-]/g, '').replace(',', '.')
+  const parsed = parseFloat(cleaned)
+  
+  if (isNaN(parsed) || parsed < 0 || parsed > 100) return null
+  return parsed
+}
+
+function parseSupplierRole(roleString: string): string {
+  if (!roleString || typeof roleString !== 'string') return 'PRIMARY'
+  
+  const cleaned = roleString.toLowerCase().trim()
+  if (cleaned.includes('primær') || cleaned.includes('primary')) return 'PRIMARY'
+  if (cleaned.includes('reserve') || cleaned.includes('secondary')) return 'SECONDARY'
+  if (cleaned.includes('backup')) return 'BACKUP'
+  
+  return 'PRIMARY' // Default
+}
+
+function extractInitialsFromSignature(signature: string): string | null {
+  if (!signature || typeof signature !== 'string') return null
+  
+  // Extract initials from strings like "18.06.25 ILK"
+  const initialsMatch = signature.match(/[A-Z]{2,4}$/)
+  return initialsMatch ? initialsMatch[0] : null
 }
 
 function generateSKU(name: string, manufacturer?: string): string {
@@ -250,6 +282,8 @@ function processItemRow(row: any): { itemData: any; supplierItemData: any; error
     certificationInfo: row.certificationInfo?.trim() || null,
     internalReference: row.internalReference?.trim() || null,
     externalId: row._externalId?.trim() || null,
+    // NY: Fastbestilling
+    standingOrderDetails: row.standingOrderDetails?.trim() || null,
     // SKU will be generated if not provided
     sku: generateSKU(name, row.manufacturer),
     // Relations will be set after lookup
@@ -269,6 +303,11 @@ function processItemRow(row: any): { itemData: any; supplierItemData: any; error
     quantityPerPackage: cleanQuantity(row._quantityPerPackage),
     productUrl: row.productUrl?.trim() || null,
     lastVerifiedDate: parseDate(row.priceCheckSignature || '') || new Date(),
+    // NYE FELTER:
+    discountPercentage: parseDiscountPercentage(row._discountPercentage),
+    priceEvaluationStatus: row.priceEvaluationStatus?.trim() || null,
+    lastVerifiedBy: extractInitialsFromSignature(row.priceCheckSignature || ''),
+    supplierRole: parseSupplierRole(row._supplierRole || ''),
     // Relations will be set after lookup
     supplierId: null,
   }

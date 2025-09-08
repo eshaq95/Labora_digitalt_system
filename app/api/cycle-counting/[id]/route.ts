@@ -13,10 +13,11 @@ const updateCountingSchema = z.object({
 })
 
 // Hent detaljer for en varetelling
-export async function GET(_: Request, { params }: { params: { id: string } }) {
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params
     const session = await prisma.cycleCountingSession.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         location: { select: { name: true } },
         category: { select: { name: true } },
@@ -54,14 +55,15 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 }
 
 // Oppdater telling (registrer talt antall)
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params
     const body = await req.json()
     const { lines, countedBy, status } = updateCountingSchema.parse(body)
 
     // Sjekk at session eksisterer
     const session = await prisma.cycleCountingSession.findUnique({
-      where: { id: params.id }
+      where: { id }
     })
 
     if (!session) {
@@ -83,7 +85,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     // Oppdater counting lines
     const result = await prisma.$transaction(async (tx) => {
-      const updatedLines = []
+      const updatedLines: any[] = []
       let discrepancies = 0
 
       for (const lineUpdate of lines) {
@@ -112,7 +114,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
       // Oppdater session
       const updatedSession = await tx.cycleCountingSession.update({
-        where: { id: params.id },
+        where: { id },
         data: {
           countedBy,
           countedItems: lines.length,
@@ -139,7 +141,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (error instanceof z.ZodError) {
       return Response.json({ 
         error: 'Ugyldig input', 
-        details: error.errors 
+        details: error.issues 
       }, { status: 400 })
     }
 

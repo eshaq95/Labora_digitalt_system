@@ -723,33 +723,63 @@ async function main() {
     // Slett eksisterende data i riktig rekkefølge for å unngå foreign key constraints
     await prisma.supplierItem.deleteMany({})
     console.log('✅ Slettet eksisterende supplier items')
-    
+
     await prisma.supplier.deleteMany({})
     console.log('✅ Slettet eksisterende leverandører')
-    
-    // Opprett alle nye leverandører
-    const createdSuppliers = await prisma.supplier.createMany({
-      data: suppliers.map(supplier => ({
-        name: supplier.name,
-        orderMethod: supplier.orderMethod,
-        website: supplier.website,
-        products: supplier.products,
-        username: supplier.username,
-        password: supplier.password,
-        orderEmail: supplier.orderEmail,
-        contactPerson: supplier.contactPerson,
-        phone: supplier.phone,
-        email: supplier.email,
-        notes: supplier.notes,
-        agreementUrl: supplier.agreementUrl,
-        credentialsVaultId: null
-      }))
-    })
-    
-    console.log(`✅ Import fullført! ${createdSuppliers.count} leverandører importert`)
-    
+
+    // Sikre at nødvendige SupplierCategory finnes
+    const CATEGORY_MAP: Record<string, string> = {
+      EQUIPMENT: 'Utstyr og forbruksvarer',
+      LOGISTICS: 'Logistikk',
+      SERVICE: 'Service-leverandører',
+      OTHER: 'Andre tilganger',
+      FORMER: 'Tidligere leverandører'
+    }
+
+    const categoryNameToId: Record<string, string> = {}
+    for (const code of Object.keys(CATEGORY_MAP)) {
+      const name = CATEGORY_MAP[code]
+      const cat = await prisma.supplierCategory.upsert({
+        where: { name },
+        update: {},
+        create: { name }
+      })
+      categoryNameToId[name] = cat.id
+    }
+
+    let created = 0
+    for (const s of suppliers) {
+      const categoryName = CATEGORY_MAP[s.category] || 'Andre tilganger'
+      const categoryId = categoryNameToId[categoryName]
+
+      // Bevar all informasjon, men mapp til feltene i det nye skjemaet.
+      const consolidatedNotes = [
+        s.notes ? String(s.notes).trim() : '',
+        s.products ? `Produkter: ${s.products}` : ''
+      ].filter(Boolean).join('\n\n') || null
+
+      await prisma.supplier.create({
+        data: {
+          name: s.name,
+          categoryId,
+          orderMethod: s.orderMethod || null,
+          website: s.website || null,
+          generalEmail: s.email || null,
+          orderEmail: s.orderEmail || null,
+          contactPerson: s.contactPerson || null,
+          phone: s.phone || null,
+          username: s.username || null,
+          credentialsNotes: s.password ? `Passord: ${s.password}` : null,
+          notes: consolidatedNotes,
+          contractUrl: (s as any).agreementUrl || null
+        }
+      })
+      created++
+    }
+
+    console.log(`✅ Import fullført! ${created} leverandører importert`)
     console.log('\n📊 Import fullført!')
-    console.log(`  Totalt: ${createdSuppliers.count} leverandører importert`)
+    console.log(`  Totalt: ${created} leverandører importert`)
     
   } catch (error) {
     console.error('❌ Feil under import:', error)

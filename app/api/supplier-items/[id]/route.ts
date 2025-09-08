@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma'
 
 export async function GET(_: Request, ctx: any) {
-  const { id } = ctx.params
+  const { id } = await ctx.params
   try {
     const supplierItem = await prisma.supplierItem.findUnique({ 
       where: { id },
@@ -20,7 +20,7 @@ export async function GET(_: Request, ctx: any) {
 }
 
 export async function PATCH(req: Request, ctx: any) {
-  const { id } = ctx.params
+  const { id } = await ctx.params
   const data = await req.json().catch(() => ({}))
   
   // Process numeric fields
@@ -61,7 +61,7 @@ export async function PATCH(req: Request, ctx: any) {
 }
 
 export async function DELETE(_: Request, ctx: any) {
-  const { id } = ctx.params
+  const { id } = await ctx.params
   try {
     await prisma.supplierItem.delete({ where: { id } })
     return new Response(null, { status: 204 })

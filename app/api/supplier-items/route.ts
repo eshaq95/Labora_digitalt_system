@@ -46,7 +46,12 @@ export async function POST(req: Request) {
     isPrimarySupplier,
     minimumOrderQty,
     packSize,
-    productUrl
+    productUrl,
+    // NYE FELTER:
+    discountPercentage,
+    priceEvaluationStatus,
+    lastVerifiedBy,
+    supplierRole
   } = body || {}
   
   if (!itemId || !supplierId || !supplierPartNumber || !negotiatedPrice) {
@@ -77,7 +82,12 @@ export async function POST(req: Request) {
         isPrimarySupplier: Boolean(isPrimarySupplier),
         minimumOrderQty: minimumOrderQty ? Number(minimumOrderQty) : null,
         packSize: packSize ? Number(packSize) : null,
-        productUrl: productUrl || null
+        productUrl: productUrl || null,
+        // NYE FELTER:
+        discountPercentage: discountPercentage ? Number(discountPercentage) : null,
+        priceEvaluationStatus: priceEvaluationStatus || null,
+        lastVerifiedBy: lastVerifiedBy || null,
+        supplierRole: supplierRole || 'PRIMARY'
       },
       include: {
         item: true,
