@@ -4,8 +4,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { DetailPageLayout } from '@/components/layout/page-layout'
 import { Modal } from '@/components/ui/modal'
-import { SupplierItemForm } from '@/components/forms/supplier-item-form'
-import { ConsumptionForm } from '@/components/forms/consumption-form'
+import dynamic from 'next/dynamic'
+
+// Code splitting for forms - only load when needed
+const SupplierItemForm = dynamic(() => import('@/components/forms/supplier-item-form').then(mod => ({ default: mod.SupplierItemForm })), {
+  loading: () => <div className="flex items-center justify-center p-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>,
+  ssr: false
+})
+
+const ConsumptionForm = dynamic(() => import('@/components/forms/consumption-form').then(mod => ({ default: mod.ConsumptionForm })), {
+  loading: () => <div className="flex items-center justify-center p-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>,
+  ssr: false
+})
 import { motion } from 'framer-motion'
 import { 
   Package, ArrowLeft, Edit, Plus, Truck, DollarSign, 
@@ -92,37 +102,24 @@ export default function ItemDetailPage() {
   const [showConsumptionForm, setShowConsumptionForm] = useState(false)
   const [selectedLot, setSelectedLot] = useState<InventoryLot | null>(null)
   const [transactions, setTransactions] = useState<any[]>([])
+  
+  // Lazy loading states for each tab
+  const [suppliersLoaded, setSuppliersLoaded] = useState(false)
+  const [inventoryLoaded, setInventoryLoaded] = useState(false)
+  const [transactionsLoaded, setTransactionsLoaded] = useState(false)
+  const [tabLoading, setTabLoading] = useState<string | null>(null)
 
+  // Initial load - only fetch basic item data
   useEffect(() => {
     if (!id) return
     
-    const fetchData = async () => {
+    const fetchBasicData = async () => {
       try {
-        const [itemRes, supplierItemsRes, inventoryRes, transactionsRes] = await Promise.all([
-          fetch(`/api/items/${id}`),
-          fetch(`/api/supplier-items?itemId=${id}`),
-          fetch(`/api/inventory?itemId=${id}`),
-          fetch(`/api/inventory/consumption?itemId=${id}&limit=20`)
-        ])
-
+        const itemRes = await fetch(`/api/items/${id}`)
+        
         if (itemRes.ok) {
           const itemData = await itemRes.json()
           setItem(itemData)
-        }
-
-        if (supplierItemsRes.ok) {
-          const supplierItemsData = await supplierItemsRes.json()
-          setSupplierItems(Array.isArray(supplierItemsData) ? supplierItemsData : [])
-        }
-
-        if (inventoryRes.ok) {
-          const inventoryData = await inventoryRes.json()
-          setInventoryLots(Array.isArray(inventoryData.lots) ? inventoryData.lots : [])
-        }
-
-        if (transactionsRes.ok) {
-          const transactionsData = await transactionsRes.json()
-          setTransactions(transactionsData)
         }
       } catch (error) {
         console.error('Kunne ikke laste varedetaljer:', error)
@@ -131,8 +128,83 @@ export default function ItemDetailPage() {
       }
     }
 
-    fetchData()
+    fetchBasicData()
   }, [id])
+
+  // Lazy load suppliers data when suppliers tab is accessed
+  const loadSuppliersData = async () => {
+    if (suppliersLoaded || !id) return
+    
+    setTabLoading('suppliers')
+    try {
+      const res = await fetch(`/api/supplier-items?itemId=${id}`)
+      if (res.ok) {
+        const data = await res.json()
+        setSupplierItems(Array.isArray(data) ? data : [])
+        setSuppliersLoaded(true)
+      }
+    } catch (error) {
+      console.error('Kunne ikke laste leverandørdata:', error)
+    } finally {
+      setTabLoading(null)
+    }
+  }
+
+  // Lazy load inventory data when inventory tab is accessed
+  const loadInventoryData = async () => {
+    if (inventoryLoaded || !id) return
+    
+    setTabLoading('inventory')
+    try {
+      const res = await fetch(`/api/inventory?itemId=${id}`)
+      if (res.ok) {
+        const data = await res.json()
+        setInventoryLots(Array.isArray(data.lots) ? data.lots : [])
+        setInventoryLoaded(true)
+      }
+    } catch (error) {
+      console.error('Kunne ikke laste lagerdata:', error)
+    } finally {
+      setTabLoading(null)
+    }
+  }
+
+  // Lazy load transactions data when transactions tab is accessed
+  const loadTransactionsData = async () => {
+    if (transactionsLoaded || !id) return
+    
+    setTabLoading('transactions')
+    try {
+      const res = await fetch(`/api/inventory/consumption?itemId=${id}&limit=20`)
+      if (res.ok) {
+        const data = await res.json()
+        setTransactions(data)
+        setTransactionsLoaded(true)
+      }
+    } catch (error) {
+      console.error('Kunne ikke laste transaksjonsdata:', error)
+    } finally {
+      setTabLoading(null)
+    }
+  }
+
+  // Handle tab changes and trigger lazy loading
+  const handleTabChange = (tab: 'details' | 'inventory' | 'suppliers' | 'transactions') => {
+    setActiveTab(tab)
+    
+    // Trigger lazy loading based on selected tab
+    switch (tab) {
+      case 'suppliers':
+        loadSuppliersData()
+        break
+      case 'inventory':
+        loadInventoryData()
+        break
+      case 'transactions':
+        loadTransactionsData()
+        break
+    }
+  }
 
   const handleAddSupplier = () => {
     setEditingSupplierItem(null)
@@ -150,6 +222,7 @@ export default function ItemDetailPage() {
       if (res.ok) {
         const data = await res.json()
         setSupplierItems(Array.isArray(data) ? data : [])
+        setSuppliersLoaded(true) // Mark as loaded after refresh
       }
     } catch (error) {
       console.error('Kunne ikke oppdatere leverandørpriser:', error)
@@ -164,20 +237,34 @@ export default function ItemDetailPage() {
   const refreshData = async () => {
     if (!id) return
     
+    // Only refresh data for tabs that have been loaded
     try {
-      const [inventoryRes, transactionsRes] = await Promise.all([
-        fetch(`/api/inventory?itemId=${id}`),
-        fetch(`/api/inventory/consumption?itemId=${id}&limit=20`)
-      ])
-
-      if (inventoryRes.ok) {
-        const inventoryData = await inventoryRes.json()
-        setInventoryLots(Array.isArray(inventoryData.lots) ? inventoryData.lots : [])
+      const promises: Promise<void>[] = []
+      
+      if (inventoryLoaded) {
+        promises.push(
+          fetch(`/api/inventory?itemId=${id}`).then(async (res) => {
+            if (res.ok) {
+              const data = await res.json()
+              setInventoryLots(Array.isArray(data.lots) ? data.lots : [])
+            }
+          })
+        )
       }
-
-      if (transactionsRes.ok) {
-        const transactionsData = await transactionsRes.json()
-        setTransactions(transactionsData)
+      
+      if (transactionsLoaded) {
+        promises.push(
+          fetch(`/api/inventory/consumption?itemId=${id}&limit=20`).then(async (res) => {
+            if (res.ok) {
+              const data = await res.json()
+              setTransactions(data)
+            }
+          })
+        )
+      }
+      
+      if (promises.length > 0) {
+        await Promise.all(promises)
       }
     } catch (error) {
       console.error('Kunne ikke oppdatere data:', error)
@@ -264,7 +351,7 @@ export default function ItemDetailPage() {
               ].map(({ key, label, icon: Icon }) => (
                 <button
                   key={key}
-                  onClick={() => setActiveTab(key as any)}
+                  onClick={() => handleTabChange(key as any)}
                   className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                     activeTab === key
                       ? 'border-labora text-labora'
@@ -388,7 +475,12 @@ export default function ItemDetailPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {inventoryLots.length === 0 ? (
+                  {tabLoading === 'inventory' ? (
+                    <div className="text-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                      <p className="text-text-secondary">Laster lagerdata...</p>
+                    </div>
+                  ) : inventoryLots.length === 0 ? (
                     <div className="text-center py-12">
                       <Package className="w-16 h-16 text-text-tertiary mx-auto mb-4" />
                       <h3 className="text-lg font-medium text-text-primary mb-2">Ingen lagerbeholdning</h3>
@@ -464,14 +556,19 @@ export default function ItemDetailPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     <span>Leverandører og Priser</span>
-                    <Button onClick={handleAddSupplier}>
+                    <Button onClick={handleAddSupplier} disabled={tabLoading === 'suppliers'}>
                       <Plus className="w-4 h-4 mr-2" />
                       Koble til leverandør
                     </Button>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {supplierItems.length === 0 ? (
+                  {tabLoading === 'suppliers' ? (
+                    <div className="text-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                      <p className="text-text-secondary">Laster leverandørdata...</p>
+                    </div>
+                  ) : supplierItems.length === 0 ? (
                     <div className="text-center py-12">
                       <Truck className="w-16 h-16 text-text-tertiary mx-auto mb-4" />
                       <h3 className="text-lg font-medium text-text-primary mb-2">Ingen leverandører koblet</h3>
@@ -607,7 +704,12 @@ export default function ItemDetailPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {transactions.length === 0 ? (
+                  {tabLoading === 'transactions' ? (
+                    <div className="text-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                      <p className="text-text-secondary">Laster transaksjonshistorikk...</p>
+                    </div>
+                  ) : transactions.length === 0 ? (
                     <div className="text-center py-12">
                       <TrendingDown className="w-16 h-16 text-text-tertiary mx-auto mb-4" />
                       <h3 className="text-lg font-medium text-text-primary mb-2">Ingen transaksjoner</h3>

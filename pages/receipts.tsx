@@ -6,7 +6,20 @@ import { PageLayout } from '@/components/layout/page-layout'
 import { SearchInput } from '@/components/ui/search-input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useToast } from '@/components/ui/toast'
-import { ReceiptForm } from '@/components/forms/receipt-form'
+import dynamic from 'next/dynamic'
+
+// Code splitting for heavy form component
+const ReceiptForm = dynamic(() => import('@/components/forms/receipt-form').then(mod => ({ default: mod.ReceiptForm })), {
+  loading: () => (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+        <p className="mt-4 text-gray-600">Laster skjema...</p>
+      </div>
+    </div>
+  ),
+  ssr: false
+})
 import { motion } from 'framer-motion'
 import { Plus, Receipt, Package, Clock, User } from 'lucide-react'
 import { useRouter } from 'next/router'

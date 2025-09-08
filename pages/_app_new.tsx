@@ -59,7 +59,6 @@ const sidebarNavigation = [
 
 function AppContent({ Component, pageProps }: AppProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
   const [quickConsumptionOpen, setQuickConsumptionOpen] = useState(false)
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
@@ -104,99 +103,72 @@ function AppContent({ Component, pageProps }: AppProps) {
   // Vis loading mens auth sjekkes eller redirect pågår
   if (loading || (!user && router.pathname !== '/login') || (user && router.pathname === '/login')) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-bg-primary dark:bg-slate-950">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-bg-primary dark:bg-slate-950 flex">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex">
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 ${sidebarCollapsed ? 'w-16' : 'w-60'} min-h-screen bg-neutral-50 dark:bg-slate-900 border-r border-neutral-200 dark:border-slate-700 transform transition-all duration-300 ease-in-out ${
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 transform transition-transform duration-300 ease-in-out ${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       } lg:translate-x-0 lg:static lg:inset-0`}>
-        <div className="flex flex-col h-full px-3 py-4">
+        <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="flex items-center justify-between px-2 mb-4">
-            {!sidebarCollapsed && (
-              <Link href="/" className="flex items-center group">
-                <motion.span 
-                  whileHover={{ scale: 1.05 }}
-                  className="text-lg font-semibold tracking-tight text-neutral-900 dark:text-white transition-colors group-hover:text-blue-600"
-                >
-                  Labora
-                </motion.span>
-              </Link>
-            )}
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="hidden lg:flex p-1.5 rounded-lg text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <Menu className="h-4 w-4" />
-            </button>
+          <div className="flex items-center h-16 px-6 border-b border-gray-200 dark:border-slate-800">
+            <Link href="/" className="flex items-center group">
+              <motion.span 
+                whileHover={{ scale: 1.05 }}
+                className="text-xl font-bold text-gray-900 dark:text-white transition-colors group-hover:text-blue-600"
+              >
+                Labora
+              </motion.span>
+            </Link>
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto">
-            <div className="flex flex-col space-y-0">
-              {sidebarNavigation.map((section, sectionIndex) => (
-                <div key={section.title} className="flex flex-col">
-                  {/* Seksjonstittel */}
-                  {!sidebarCollapsed && (
-                    <div className="px-2 pt-3 pb-1 text-xs font-medium text-neutral-500 dark:text-slate-400 uppercase tracking-wide">
-                      {section.title}
-                    </div>
-                  )}
-                  
-                  {/* Meny-elementer - hver på sin egen rad */}
-                  <div className="flex flex-col space-y-1">
-                    {section.items.map(({ href, label, icon: Icon, description }) => {
-                      const isActive = router.pathname === href || (href !== '/' && router.pathname.startsWith(href))
-                      return (
-                        <div key={href} className="w-full">
-                          <Tooltip content={sidebarCollapsed ? label : description} position="right">
-                            <Link href={href} className="block w-full">
-                              <motion.div
-                                whileHover={{ scale: sidebarCollapsed ? 1.05 : 1.02 }}
-                                whileTap={{ scale: 0.98 }}
-                                className={`w-full flex items-center gap-3 px-2 py-2.5 rounded-xl transition-all duration-200 ${
-                                  isActive
-                                    ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
-                                    : 'text-neutral-700 dark:text-slate-300 hover:bg-neutral-100 dark:hover:bg-slate-800/50'
-                                }`}
-                              >
-                                <Icon className={`h-5 w-5 flex-shrink-0 ${sidebarCollapsed ? 'mx-auto' : ''} ${
-                                  isActive 
-                                    ? 'text-blue-600 dark:text-blue-400' 
-                                    : 'text-neutral-500 dark:text-slate-400'
-                                }`} />
-                                {!sidebarCollapsed && (
-                                  <span className={`text-sm flex-1 whitespace-nowrap ${isActive ? 'font-semibold' : 'font-medium'}`}>
-                                    {label}
-                                  </span>
-                                )}
-                                {/* Badge for pending orders */}
-                                {!sidebarCollapsed && href === '/orders' && (
-                                  <span className="flex-shrink-0 inline-flex items-center justify-center text-xs bg-blue-600 text-white rounded-full h-5 min-w-[20px] px-1.5">
-                                    2
-                                  </span>
-                                )}
-                              </motion.div>
-                            </Link>
-                          </Tooltip>
-                        </div>
-                      )
-                    })}
-                  </div>
-                  
-                  {/* Skillelinje mellom seksjoner */}
-                  {sectionIndex < sidebarNavigation.length - 1 && (
-                    <div className="my-3 border-t border-neutral-200 dark:border-slate-700" />
-                  )}
+          <nav className="flex-1 px-4 py-6 space-y-8 overflow-y-auto">
+            {sidebarNavigation.map((section) => (
+              <div key={section.title}>
+                <h3 className="px-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  {section.title}
+                </h3>
+                <div className="mt-3 space-y-1">
+                  {section.items.map(({ href, label, icon: Icon, description }) => {
+                    const isActive = router.pathname === href || (href !== '/' && router.pathname.startsWith(href))
+                    return (
+                      <Link key={href} href={href}>
+                        <motion.div
+                          whileHover={{ x: 4 }}
+                          whileTap={{ scale: 0.98 }}
+                          className={`group flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
+                            isActive
+                              ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-r-2 border-blue-500'
+                              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white'
+                          }`}
+                        >
+                          <Icon className={`mr-3 h-5 w-5 transition-colors ${
+                            isActive 
+                              ? 'text-blue-500 dark:text-blue-400' 
+                              : 'text-gray-400 group-hover:text-gray-500 dark:group-hover:text-gray-300'
+                          }`} />
+                          <div className="flex-1">
+                            <div>{label}</div>
+                            {description && (
+                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                {description}
+                              </div>
+                            )}
+                          </div>
+                        </motion.div>
+                      </Link>
+                    )
+                  })}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </nav>
         </div>
       </div>
@@ -204,12 +176,12 @@ function AppContent({ Component, pageProps }: AppProps) {
       {/* Main Content */}
       <div className="flex-1 flex flex-col lg:pl-0">
         {/* Top Header */}
-        <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-gray-200/20 dark:border-slate-700/20">
+        <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-gray-200 dark:border-slate-800">
           <div className="flex items-center justify-between h-16 px-6">
             {/* Mobile menu button */}
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="lg:hidden p-2 rounded-lg text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+              className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <Menu className="h-5 w-5" />
             </button>
@@ -243,7 +215,7 @@ function AppContent({ Component, pageProps }: AppProps) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 bg-bg-primary dark:bg-slate-950">
+        <main className="flex-1 bg-gray-50 dark:bg-slate-950">
           <Component {...pageProps} />
         </main>
       </div>
