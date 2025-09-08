@@ -41,7 +41,7 @@ export async function GET(
 
     const filename = `lot-${lot.item.sku}-${lot.lotNumber || 'no-lot'}-qr.png`;
 
-    return new NextResponse(qrCodeBuffer, {
+    return new NextResponse(qrCodeBuffer as BodyInit, {
       headers: {
         'Content-Type': 'image/png',
         'Content-Disposition': `inline; filename="${filename}"`,

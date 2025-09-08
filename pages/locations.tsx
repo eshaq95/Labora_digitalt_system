@@ -259,7 +259,7 @@ export default function LocationsPage() {
 
         {/* QR Code Modal */}
         <Modal 
-          isOpen={qrModalOpen} 
+          open={qrModalOpen} 
           onClose={() => setQrModalOpen(false)} 
           title={`QR-kode for ${selectedLocationForQR?.name}`}
         >

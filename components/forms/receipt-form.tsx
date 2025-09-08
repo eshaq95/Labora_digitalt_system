@@ -4,7 +4,9 @@ import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
 import { Card, CardContent } from '@/components/ui/card'
 import { useToast } from '@/components/ui/toast'
-import { Plus, Trash2, Package, AlertTriangle, Calendar, Hash, Split } from 'lucide-react'
+import { BarcodeScanner } from '@/components/ui/barcode-scanner'
+import { Plus, Trash2, Package, AlertTriangle, Calendar, Hash, Split, Scan } from 'lucide-react'
+import { ScanResult } from '@/app/api/scan-lookup/route'
 
 type ReceiptLine = {
   itemId: string
@@ -61,6 +63,8 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
   const [items, setItems] = useState<Item[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [loading, setLoading] = useState(false)
+  const [scannerOpen, setScannerOpen] = useState(false)
+  const [currentLineIndex, setCurrentLineIndex] = useState<number | null>(null)
   const { showToast } = useToast()
 
   // Load reference data
@@ -168,6 +172,52 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
     }))
   }
 
+  const handleScanSuccess = (result: ScanResult) => {
+    if (result.type === 'ITEM') {
+      const item = result.data;
+      
+      if (currentLineIndex !== null) {
+        // Update existing line
+        updateLine(currentLineIndex, 'itemId', item.id);
+      } else {
+        // Add new line with scanned item
+        const newLine: ReceiptLine = {
+          itemId: item.id,
+          locationId: item.defaultLocationId || '',
+          quantity: 1,
+          lotNumber: '',
+          expiryDate: ''
+        };
+        
+        setFormData(prev => ({
+          ...prev,
+          lines: [...prev.lines, newLine]
+        }));
+      }
+      
+      showToast('success', `Vare lagt til: ${item.name}`);
+      setCurrentLineIndex(null);
+    } else if (result.type === 'LOCATION') {
+      if (currentLineIndex !== null) {
+        updateLine(currentLineIndex, 'locationId', result.data.id);
+        showToast('success', `Lokasjon valgt: ${result.data.name}`);
+        setCurrentLineIndex(null);
+      }
+    } else {
+      showToast('error', result.message || 'Ukjent kode');
+    }
+  }
+
+  const openScannerForLine = (lineIndex: number) => {
+    setCurrentLineIndex(lineIndex);
+    setScannerOpen(true);
+  }
+
+  const openScannerForNewItem = () => {
+    setCurrentLineIndex(null);
+    setScannerOpen(true);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     
@@ -261,10 +311,16 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
         <div>
           <div className="flex items-center justify-between mb-4">
             <h4 className="text-sm font-semibold">Mottatte varer</h4>
-            <Button type="button" variant="outline" size="sm" onClick={addLine}>
-              <Plus className="w-4 h-4 mr-1" />
-              Legg til vare
-            </Button>
+            <div className="flex space-x-2">
+              <Button type="button" variant="outline" size="sm" onClick={openScannerForNewItem}>
+                <Scan className="w-4 h-4 mr-1" />
+                Skann vare
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={addLine}>
+                <Plus className="w-4 h-4 mr-1" />
+                Legg til manuelt
+              </Button>
+            </div>
           </div>
 
           {formData.lines.length === 0 ? (
@@ -272,9 +328,16 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
               <CardContent className="flex flex-col items-center justify-center py-8 text-center">
                 <Package className="w-8 h-8 text-gray-400 mb-2" />
                 <p className="text-sm text-gray-500">Ingen varer lagt til ennå</p>
-                <Button type="button" variant="outline" size="sm" onClick={addLine} className="mt-2">
-                  Legg til første vare
-                </Button>
+                <div className="flex space-x-2 mt-3">
+                  <Button type="button" variant="outline" size="sm" onClick={openScannerForNewItem}>
+                    <Scan className="w-4 h-4 mr-1" />
+                    Skann vare
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={addLine}>
+                    <Plus className="w-4 h-4 mr-1" />
+                    Legg til manuelt
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ) : (
@@ -455,6 +518,18 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
           </Button>
         </div>
       </form>
+
+      {/* Barcode Scanner for Receipt Items */}
+      <BarcodeScanner
+        isOpen={scannerOpen}
+        onClose={() => {
+          setScannerOpen(false);
+          setCurrentLineIndex(null);
+        }}
+        onScanSuccess={handleScanSuccess}
+        title="Skann vare eller lokasjon"
+        description="Skann leverandørens strekkode eller QR-kode for lokasjon"
+      />
     </Modal>
   )
 }

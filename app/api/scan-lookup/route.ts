@@ -67,13 +67,17 @@ async function resolveScannedCode(scannedString: string): Promise<ScanResult> {
             supplier: true
           }
         },
-        inventoryLots: {
+        lots: {
+          where: {
+            quantity: { gt: 0 } // Kun partier med beholdning
+          },
           include: {
             location: true
           },
-          orderBy: {
-            expiryDate: 'asc'
-          }
+          orderBy: [
+            { expiryDate: 'asc' }, // FEFO: First Expired, First Out
+            { createdAt: 'asc' }   // Deretter eldste først
+          ]
         }
       }
     });

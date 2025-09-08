@@ -41,7 +41,7 @@ export default function ScannerDemoPage() {
   ];
 
   return (
-    <PageLayout title="Scanner & QR-kode Demo" description="Test hybrid strekkode/QR-kode systemet">
+    <PageLayout title="Scanner & QR-kode Demo" subtitle="Test hybrid strekkode/QR-kode systemet">
       <div className="space-y-6">
         
         {/* Scanner Section */}

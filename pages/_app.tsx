@@ -8,8 +8,11 @@ import { ToastProvider } from '@/components/ui/toast'
 import { AuthProvider, useAuth } from '@/lib/auth'
 import { ProfileDropdown } from '@/components/ui/profile-dropdown'
 import { Tooltip } from '@/components/ui/tooltip'
-import { Package, Truck, Warehouse, ClipboardList, Receipt, Menu, X, Sparkles, BarChart3, Calculator } from 'lucide-react'
+import { BarcodeScanner } from '@/components/ui/barcode-scanner'
+import { QuickConsumptionModal } from '@/components/inventory/quick-consumption-modal'
+import { Package, Truck, Warehouse, ClipboardList, Receipt, Menu, X, Sparkles, BarChart3, Calculator, Scan } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { ScanResult } from '@/app/api/scan-lookup/route'
 
 // Optimalisert navigasjonsstruktur - redusert fra 8 til 6 menypunkter
 const navItems = [
@@ -29,8 +32,29 @@ const navItems = [
 
 function AppContent({ Component, pageProps }: AppProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [scannerOpen, setScannerOpen] = useState(false)
+  const [quickConsumptionOpen, setQuickConsumptionOpen] = useState(false)
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null)
   const router = useRouter()
   const { user, logout, loading } = useAuth()
+
+  const handleScanSuccess = (result: ScanResult) => {
+    setScanResult(result)
+    setScannerOpen(false)
+    
+    // Only open quick consumption for items and lots
+    if (result.type === 'ITEM' || result.type === 'LOT') {
+      setQuickConsumptionOpen(true)
+    } else if (result.type === 'LOCATION') {
+      // For locations, navigate to inventory with location filter
+      router.push(`/inventory?location=${result.data.id}`)
+    }
+  }
+
+  const handleQuickConsumptionSuccess = () => {
+    // Refresh current page data if needed
+    router.reload()
+  }
 
   // Client-side redirect logikk
   React.useEffect(() => {
@@ -101,6 +125,21 @@ function AppContent({ Component, pageProps }: AppProps) {
 
               {/* Right Side */}
               <div className="flex items-center gap-3">
+                {/* Global Scan & Go Button */}
+                {user && (
+                  <Tooltip content="Scan & Go - Hurtiguttak">
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => setScannerOpen(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg font-medium shadow-lg hover:shadow-xl transition-all duration-200"
+                    >
+                      <Scan className="w-4 h-4" />
+                      <span className="hidden sm:inline">Scan & Go</span>
+                    </motion.button>
+                  </Tooltip>
+                )}
+
                 {/* Profile Dropdown */}
                 {user && (
                   <ProfileDropdown user={user} onLogout={logout} />
@@ -173,6 +212,22 @@ function AppContent({ Component, pageProps }: AppProps) {
         <main className="relative min-h-screen bg-bg-primary dark:bg-slate-950">
           <Component {...pageProps} />
         </main>
+
+        {/* Global Scan & Go Modals */}
+        <BarcodeScanner
+          isOpen={scannerOpen}
+          onClose={() => setScannerOpen(false)}
+          onScanSuccess={handleScanSuccess}
+          title="🚀 Scan & Go - Hurtiguttak"
+          description="Skann strekkode eller QR-kode for rask vareuttak"
+        />
+
+        <QuickConsumptionModal
+          isOpen={quickConsumptionOpen}
+          onClose={() => setQuickConsumptionOpen(false)}
+          scanResult={scanResult}
+          onSuccess={handleQuickConsumptionSuccess}
+        />
       </div>
   )
 }

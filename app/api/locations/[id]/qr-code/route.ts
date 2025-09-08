@@ -44,7 +44,7 @@ export async function GET(
       errorCorrectionLevel: 'M'
     });
 
-    return new NextResponse(qrCodeBuffer, {
+    return new NextResponse(qrCodeBuffer as BodyInit, {
       headers: {
         'Content-Type': 'image/png',
         'Content-Disposition': `inline; filename="location-${location.name}-qr.png"`,

@@ -5,11 +5,13 @@ import { PageLayout } from '@/components/layout/page-layout'
 import { Modal } from '@/components/ui/modal'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
+import { BarcodeScanner } from '@/components/ui/barcode-scanner'
 import { motion } from 'framer-motion'
 import { 
   Plus, ClipboardList, CheckCircle, Clock, AlertCircle, 
-  Calendar, User, MapPin, Package, TrendingUp
+  Calendar, User, MapPin, Package, TrendingUp, Scan
 } from 'lucide-react'
+import { ScanResult } from '@/app/api/scan-lookup/route'
 
 type CycleCountingSession = {
   id: string
@@ -47,6 +49,7 @@ export default function CycleCountingPage() {
   const [locations, setLocations] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
   const [departments, setDepartments] = useState<any[]>([])
+  const [scannerOpen, setScannerOpen] = useState(false)
   const { showToast } = useToast()
 
   useEffect(() => {
@@ -92,6 +95,22 @@ export default function CycleCountingPage() {
       }
     } catch (error) {
       console.error('Kunne ikke hente referansedata:', error)
+    }
+  }
+
+  const handleScanSuccess = (result: ScanResult) => {
+    if (result.type === 'LOCATION') {
+      // Auto-fill location in new session form
+      setFormData(prev => ({ ...prev, locationId: result.data.id }));
+      showToast('success', `Lokasjon valgt for telling: ${result.data.name}`);
+    } else if (result.type === 'ITEM') {
+      // Could navigate to item details or show item info
+      showToast('success', `Vare skannet: ${result.data.name}. Bruk dette i en aktiv telling.`);
+    } else if (result.type === 'LOT') {
+      // Show lot information
+      showToast('success', `Parti skannet: ${result.data.item.name} (Lot: ${result.data.lotNumber || 'N/A'})`);
+    } else {
+      showToast('error', result.message || 'Ukjent kode');
     }
   }
 
@@ -176,10 +195,16 @@ export default function CycleCountingPage() {
       title="Varetelling"
       subtitle="Strukturert telling og justering av lagerbeholdning"
       actions={
-        <Button onClick={() => setShowCreateForm(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          Ny varetelling
-        </Button>
+        <div className="flex space-x-2">
+          <Button variant="outline" onClick={() => setScannerOpen(true)}>
+            <Scan className="w-4 h-4 mr-2" />
+            Skann lokasjon
+          </Button>
+          <Button onClick={() => setShowCreateForm(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Ny varetelling
+          </Button>
+        </div>
       }
     >
       {/* Sessions Count */}
@@ -417,6 +442,15 @@ export default function CycleCountingPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Barcode Scanner for Cycle Counting */}
+      <BarcodeScanner
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScanSuccess={handleScanSuccess}
+        title="Skann for varetelling"
+        description="Skann lokasjon, vare eller parti for telling"
+      />
     </PageLayout>
   )
 }

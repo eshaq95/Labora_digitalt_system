@@ -163,7 +163,7 @@ export function BarcodeScanner({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title={title}>
+    <Modal open={isOpen} onClose={handleClose} title={title}>
       <div className="space-y-4">
         <p className="text-sm text-gray-600">{description}</p>
 
