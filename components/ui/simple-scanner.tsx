@@ -64,9 +64,9 @@ export function SimpleScanner({
             fps: 15, // Higher FPS for better scanning with zoom
             qrbox: { width: 180, height: 180 }, // Much smaller scanning area for maximum zoom
             aspectRatio: 1.0,
-            // Request higher resolution for better zoom
-            width: { ideal: 1920, min: 1280 },
-            height: { ideal: 1080, min: 720 },
+            // Request higher resolution for better zoom (no mandatory minimums)
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
             // Support all common formats including Data Matrix
             formatsToSupport: [
               // 2D Codes

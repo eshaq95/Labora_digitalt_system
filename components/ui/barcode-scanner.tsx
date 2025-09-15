@@ -103,16 +103,14 @@ export function BarcodeScanner({
         ],
         showTorchButtonIfSupported: true,
         showZoomSliderIfSupported: true,
-        // Add camera constraints for better focus and zoom
+        // Add camera constraints for better focus (zoom made optional)
         videoConstraints: {
           facingMode: "environment", // Use back camera if available
           width: { ideal: 1920, min: 1280 }, // Higher resolution for better zoom
           height: { ideal: 1080, min: 720 },
-          focusMode: "continuous",
-          zoom: { ideal: 3.0, min: 2.0 }, // Request 3x zoom, minimum 2x
           advanced: [
             { focusMode: "continuous" },
-            { zoom: { ideal: 3.0, min: 2.0 } }
+            { zoom: { ideal: 2.0 } } // Optional zoom, no minimum requirement
           ]
         },
       },
@@ -137,7 +135,7 @@ export function BarcodeScanner({
     scannerRef.current = scanner;
   };
 
-  // Check camera permissions and capabilities
+  // Check camera permissions and capabilities with fallback
   const checkCameraPermission = async () => {
     try {
       console.log('Checking camera permissions...');
@@ -150,14 +148,24 @@ export function BarcodeScanner({
         return;
       }
 
-      // Try to get camera access with high resolution constraints
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: "environment",
-          width: { ideal: 1920, min: 1280 },
-          height: { ideal: 1080, min: 720 }
-        } 
-      });
+      let stream;
+      
+      try {
+        // Try with preferred constraints first
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: "environment",
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          } 
+        });
+      } catch (err) {
+        console.warn('Advanced constraints failed, trying basic video:', err);
+        // Fallback to basic video constraints
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: true 
+        });
+      }
       
       console.log('Camera permission granted');
       setCameraPermission('granted');
