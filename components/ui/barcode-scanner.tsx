@@ -62,9 +62,12 @@ export function BarcodeScanner({
     }
   };
 
-  // Håndter kamera-skanning
+  // Handle camera scanning
   const initializeScanner = () => {
+    console.log('Initializing scanner...');
+    
     if (scannerRef.current) {
+      console.log('Clearing existing scanner');
       scannerRef.current.clear();
     }
 
@@ -72,23 +75,29 @@ export function BarcodeScanner({
       scannerElementId,
       {
         fps: 10,
-        qrbox: { width: 250, height: 250 },
+        qrbox: function(viewfinderWidth, viewfinderHeight) {
+          // Make the qrbox responsive and larger
+          const minEdgePercentage = 0.7; // 70% of the smaller dimension
+          const minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
+          const qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
+          return {
+            width: qrboxSize,
+            height: qrboxSize,
+          };
+        },
         supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
-        aspectRatio: 1.0,
+        aspectRatio: 1.777778, // 16:9 aspect ratio
         disableFlip: false,
-        formatsToSupport: [
-          // QR-koder (2D)
-          Html5QrcodeSupportedFormats.QR_CODE,
-          // Vanlige 1D strekkoder
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E,
-        ],
+        // Remove format restrictions to allow all formats
+        // formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
         showTorchButtonIfSupported: true,
         showZoomSliderIfSupported: true,
+        // Add camera constraints for better focus
+        videoConstraints: {
+          facingMode: "environment", // Use back camera if available
+          focusMode: "continuous",
+          advanced: [{ focusMode: "continuous" }]
+        },
       },
       true // verbose - enable for debugging
     );
@@ -111,14 +120,38 @@ export function BarcodeScanner({
     scannerRef.current = scanner;
   };
 
-  // Sjekk kamera-tillatelser
+  // Check camera permissions and capabilities
   const checkCameraPermission = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      console.log('Checking camera permissions...');
+      
+      // First check if getUserMedia is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.error('getUserMedia not supported');
+        setCameraPermission('denied');
+        setScanMode('manual');
+        return;
+      }
+
+      // Try to get camera access with specific constraints
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: "environment",
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } 
+      });
+      
+      console.log('Camera permission granted');
       setCameraPermission('granted');
-      // Stopp stream umiddelbart - vi bare tester tillatelser
-      stream.getTracks().forEach(track => track.stop());
+      
+      // Stop stream immediately - we're just testing permissions
+      stream.getTracks().forEach(track => {
+        console.log('Stopping track:', track.label);
+        track.stop();
+      });
     } catch (err) {
+      console.error('Camera permission error:', err);
       setCameraPermission('denied');
       setScanMode('manual');
     }
