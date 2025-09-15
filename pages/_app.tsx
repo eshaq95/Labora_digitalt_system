@@ -24,7 +24,7 @@ const BarcodeScanner = dynamic(() => import('@/components/ui/barcode-scanner').t
   ssr: false
 })
 
-const QuickConsumptionModal = dynamic(() => import('@/components/inventory/quick-consumption-modal'), {
+const QuickConsumptionModal = dynamic(() => import('@/components/inventory/quick-consumption-modal').then(mod => ({ default: mod.QuickConsumptionModal })), {
   loading: () => (
     <div className="flex items-center justify-center p-4">
       <div className="flex flex-col items-center gap-2">

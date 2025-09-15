@@ -74,6 +74,8 @@ export function BarcodeScanner({
         fps: 10,
         qrbox: { width: 250, height: 250 },
         supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
+        aspectRatio: 1.0,
+        disableFlip: false,
         formatsToSupport: [
           // QR-koder (2D)
           Html5QrcodeSupportedFormats.QR_CODE,
@@ -88,17 +90,21 @@ export function BarcodeScanner({
         showTorchButtonIfSupported: true,
         showZoomSliderIfSupported: true,
       },
-      false // verbose
+      true // verbose - enable for debugging
     );
 
     scanner.render(
       (decodedText) => {
         // Suksess - kode skannet
+        console.log('QR/Barcode scanned successfully:', decodedText);
         lookupCode(decodedText);
       },
       (errorMessage) => {
         // Feil ved skanning (dette er normalt og skjer kontinuerlig)
-        // Vi logger ikke dette da det er forventet oppførsel
+        // Men vi loggar för debugging
+        if (errorMessage.includes('QR code parse error') || errorMessage.includes('No MultiFormat Readers')) {
+          console.warn('Scanner error:', errorMessage);
+        }
       }
     );
 
