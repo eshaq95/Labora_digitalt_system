@@ -76,13 +76,13 @@ export function BarcodeScanner({
       {
         fps: 10,
         qrbox: function(viewfinderWidth, viewfinderHeight) {
-          // Make the qrbox responsive and larger
-          const minEdgePercentage = 0.7; // 70% of the smaller dimension
+          // Make the qrbox smaller for better zoom/focus
+          const minEdgePercentage = 0.5; // 50% of the smaller dimension for better zoom
           const minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
           const qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
           return {
-            width: qrboxSize,
-            height: qrboxSize,
+            width: Math.max(qrboxSize, 200), // Minimum 200px
+            height: Math.max(qrboxSize, 200),
           };
         },
         supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
@@ -103,11 +103,17 @@ export function BarcodeScanner({
         ],
         showTorchButtonIfSupported: true,
         showZoomSliderIfSupported: true,
-        // Add camera constraints for better focus
+        // Add camera constraints for better focus and zoom
         videoConstraints: {
           facingMode: "environment", // Use back camera if available
+          width: { ideal: 1920, min: 1280 }, // Higher resolution for better zoom
+          height: { ideal: 1080, min: 720 },
           focusMode: "continuous",
-          advanced: [{ focusMode: "continuous" }]
+          zoom: { ideal: 2.0 }, // Request 2x zoom if supported
+          advanced: [
+            { focusMode: "continuous" },
+            { zoom: { ideal: 2.0 } }
+          ]
         },
       },
       true // verbose - enable for debugging
@@ -144,12 +150,12 @@ export function BarcodeScanner({
         return;
       }
 
-      // Try to get camera access with specific constraints
+      // Try to get camera access with high resolution constraints
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: "environment",
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          width: { ideal: 1920, min: 1280 },
+          height: { ideal: 1080, min: 720 }
         } 
       });
       

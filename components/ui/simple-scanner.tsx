@@ -57,13 +57,16 @@ export function SimpleScanner({
 
         console.log('Using camera:', cameraId);
 
-        // Start scanning
+        // Start scanning with better zoom settings
         await html5QrCode.start(
           cameraId,
           {
             fps: 10,
-            qrbox: { width: 300, height: 300 },
+            qrbox: { width: 250, height: 250 }, // Smaller scanning area for better zoom
             aspectRatio: 1.0,
+            // Request higher resolution for better zoom
+            width: { ideal: 1920, min: 1280 },
+            height: { ideal: 1080, min: 720 },
             // Support all common formats including Data Matrix
             formatsToSupport: [
               // 2D Codes
