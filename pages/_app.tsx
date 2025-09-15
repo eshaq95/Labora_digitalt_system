@@ -412,7 +412,7 @@ function AppContent({ Component, pageProps }: AppProps) {
         onClose={() => setScannerOpen(false)}
         onScanSuccess={handleScanSuccess}
         title="🚀 Scan & Go - Hurtiguttak"
-        description="Skann strekkode eller QR-kode for rask vareuttak"
+        description="Skann strekkode, QR-kode eller Data Matrix med høy zoom for rask vareuttak"
       />
 
       <QuickConsumptionModal
