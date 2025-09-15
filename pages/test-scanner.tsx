@@ -27,7 +27,10 @@ export default function TestScannerPage() {
       <div className="max-w-2xl mx-auto space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">QR Scanner Test</h1>
-          <p className="text-gray-600 mt-2">Test QR/barcode scanning functionality</p>
+          <p className="text-gray-600 mt-2">Test QR codes, Data Matrix, and barcode scanning functionality</p>
+          <div className="mt-2 text-sm text-gray-500">
+            <p><strong>Supported formats:</strong> QR Code, Data Matrix, Code 128, Code 39, EAN-13, EAN-8, UPC-A, UPC-E</p>
+          </div>
         </div>
 
         <div className="bg-white rounded-lg shadow p-6 space-y-4">
@@ -72,7 +75,7 @@ export default function TestScannerPage() {
           onClose={() => setScannerOpen(false)}
           onScanSuccess={handleScanSuccess}
           title="Advanced Scanner"
-          description="Scan any QR code or barcode"
+          description="Scan QR codes, Data Matrix, and barcodes"
         />
 
         <SimpleScanner
@@ -80,7 +83,7 @@ export default function TestScannerPage() {
           onClose={() => setSimpleScannerOpen(false)}
           onScanSuccess={handleSimpleScanSuccess}
           title="Simple Scanner"
-          description="Basic QR code detection"
+          description="Basic QR code and Data Matrix detection"
         />
       </div>
     </div>

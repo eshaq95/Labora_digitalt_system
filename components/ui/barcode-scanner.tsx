@@ -88,8 +88,19 @@ export function BarcodeScanner({
         supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
         aspectRatio: 1.777778, // 16:9 aspect ratio
         disableFlip: false,
-        // Remove format restrictions to allow all formats
-        // formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        // Support all common formats including Data Matrix
+        formatsToSupport: [
+          // 2D Codes
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.DATA_MATRIX,
+          // 1D Barcodes
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+        ],
         showTorchButtonIfSupported: true,
         showZoomSliderIfSupported: true,
         // Add camera constraints for better focus

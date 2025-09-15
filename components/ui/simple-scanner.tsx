@@ -64,6 +64,19 @@ export function SimpleScanner({
             fps: 10,
             qrbox: { width: 300, height: 300 },
             aspectRatio: 1.0,
+            // Support all common formats including Data Matrix
+            formatsToSupport: [
+              // 2D Codes
+              'QR_CODE',
+              'DATA_MATRIX',
+              // 1D Barcodes  
+              'CODE_128',
+              'CODE_39',
+              'EAN_13',
+              'EAN_8',
+              'UPC_A',
+              'UPC_E',
+            ],
           },
           (decodedText, decodedResult) => {
             console.log('QR Code detected:', decodedText);
