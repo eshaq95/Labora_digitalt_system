@@ -74,15 +74,15 @@ export function BarcodeScanner({
     const scanner = new Html5QrcodeScanner(
       scannerElementId,
       {
-        fps: 10,
+        fps: 15, // Higher FPS for better scanning with zoom
         qrbox: function(viewfinderWidth, viewfinderHeight) {
-          // Make the qrbox smaller for better zoom/focus
-          const minEdgePercentage = 0.5; // 50% of the smaller dimension for better zoom
+          // Much smaller qrbox for maximum zoom effect
+          const minEdgePercentage = 0.3; // 30% of the smaller dimension for maximum zoom
           const minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
           const qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
           return {
-            width: Math.max(qrboxSize, 200), // Minimum 200px
-            height: Math.max(qrboxSize, 200),
+            width: Math.max(qrboxSize, 150), // Minimum 150px for very focused scanning
+            height: Math.max(qrboxSize, 150),
           };
         },
         supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
@@ -109,10 +109,10 @@ export function BarcodeScanner({
           width: { ideal: 1920, min: 1280 }, // Higher resolution for better zoom
           height: { ideal: 1080, min: 720 },
           focusMode: "continuous",
-          zoom: { ideal: 2.0 }, // Request 2x zoom if supported
+          zoom: { ideal: 3.0, min: 2.0 }, // Request 3x zoom, minimum 2x
           advanced: [
             { focusMode: "continuous" },
-            { zoom: { ideal: 2.0 } }
+            { zoom: { ideal: 3.0, min: 2.0 } }
           ]
         },
       },

@@ -61,8 +61,8 @@ export function SimpleScanner({
         await html5QrCode.start(
           cameraId,
           {
-            fps: 10,
-            qrbox: { width: 250, height: 250 }, // Smaller scanning area for better zoom
+            fps: 15, // Higher FPS for better scanning with zoom
+            qrbox: { width: 180, height: 180 }, // Much smaller scanning area for maximum zoom
             aspectRatio: 1.0,
             // Request higher resolution for better zoom
             width: { ideal: 1920, min: 1280 },
