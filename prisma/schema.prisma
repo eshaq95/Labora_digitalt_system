@@ -42,6 +42,7 @@ enum TransactionType {
   CONSUMPTION  // Forbruk (Ut) 
   ADJUSTMENT   // Justering (Inn/Ut - f.eks. etter telling)
   TRANSFER     // Overføring mellom lokasjoner
+  INITIAL_COUNT // Initial synkronisering (Inn)
 }
 
 enum Role {
@@ -217,6 +218,10 @@ model Attachment {
   description String?  @db.Text        // Beskrivelse av vedlegget
   category    AttachmentCategory @default(OTHER)
   
+  // Avtale-spesifikke felt
+  validUntil         DateTime? // Når avtalen/dokumentet utløper
+  agreementReference String?   @db.Text // Referanse til avtalen (f.eks. "Labforum 2025")
+  
   uploadedBy  String?
   uploader    User?    @relation(fields: [uploadedBy], references: [id])
   
@@ -387,6 +392,9 @@ model Item {
 
   // Ny prisbok-relasjon
   supplierItems   SupplierItem[]
+  
+  // Multiple barcode support
+  barcodes        ItemBarcode[]
 
   lots            InventoryLot[]
   orderLines      PurchaseOrderLine[]
@@ -395,6 +403,42 @@ model Item {
 
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
+  
+  // Performance indexes for frequently queried fields
+  @@index([name])
+  @@index([sku])
+  @@index([categoryId])
+  @@index([departmentId])
+  @@index([minStock])
+  @@index([createdAt])
+}
+
+// New model for supporting multiple barcodes per item
+model ItemBarcode {
+  id          String      @id @default(cuid())
+  itemId      String
+  item        Item        @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  
+  barcode     String      @unique
+  type        BarcodeType @default(GTIN)
+  description String?     @db.Text  // Optional description (e.g., "Supplier A GTIN", "Internal code")
+  isPrimary   Boolean     @default(false)  // One primary barcode per item
+  
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  @@index([itemId])
+  @@index([barcode])
+}
+
+enum BarcodeType {
+  GTIN        // Global Trade Item Number (from GS1)
+  EAN         // European Article Number
+  UPC         // Universal Product Code
+  INTERNAL    // Internal company code
+  SUPPLIER    // Supplier-specific code
+  QR          // QR code
+  OTHER       // Other barcode types
 }
 
 model Discount {
@@ -476,6 +520,12 @@ model PurchaseOrder {
   lines           PurchaseOrderLine[]
   receipts        Receipt[]
   transactions    InventoryTransaction[]
+  
+  // Performance indexes for frequently queried fields
+  @@index([status])
+  @@index([requestedDate])
+  @@index([supplierId])
+  @@index([requestedBy])
 }
 
 model PurchaseOrderLine {

@@ -9,8 +9,10 @@ import { motion } from 'framer-motion'
 import { 
   Truck, ArrowLeft, Edit, Plus, Globe, Mail, Phone, 
   User, DollarSign, Package, FileText, ExternalLink,
-  Star, Calendar, AlertCircle, Upload
+  Star, Calendar, AlertCircle, Upload, Paperclip
 } from 'lucide-react'
+import { SupplierAttachments } from '@/components/suppliers/supplier-attachments'
+import { PriceListImport } from '@/components/suppliers/price-list-import'
 
 type Supplier = {
   id: string
@@ -74,7 +76,7 @@ export default function SupplierDetailPage() {
   const [supplierItems, setSupplierItems] = useState<SupplierItem[]>([])
   const [orders, setOrders] = useState<PurchaseOrder[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'contact' | 'orders' | 'pricing'>('contact')
+  const [activeTab, setActiveTab] = useState<'contact' | 'orders' | 'pricing' | 'attachments'>('contact')
   const [showSupplierItemForm, setShowSupplierItemForm] = useState(false)
   const [editingSupplierItem, setEditingSupplierItem] = useState<SupplierItem | null>(null)
 
@@ -186,7 +188,8 @@ export default function SupplierDetailPage() {
               {[
                 { key: 'contact', label: 'Kontaktinfo', icon: User },
                 { key: 'orders', label: 'Bestillinger', icon: Package },
-                { key: 'pricing', label: 'Prisbok og Avtaler', icon: DollarSign }
+                { key: 'pricing', label: 'Prisbok og Avtaler', icon: DollarSign },
+                { key: 'attachments', label: 'Dokumenter', icon: Paperclip }
               ].map(({ key, label, icon: Icon }) => (
                 <button
                   key={key}
@@ -440,10 +443,11 @@ export default function SupplierDetailPage() {
                   <CardTitle className="flex items-center justify-between">
                     <span>Prisbok ({supplierItems.length} produkter)</span>
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm">
-                        <Upload className="w-4 h-4 mr-2" />
-                        Importer prisliste
-                      </Button>
+                      <PriceListImport 
+                        supplierId={supplier.id}
+                        supplierName={supplier.name}
+                        onImportComplete={refreshSupplierItems}
+                      />
                       <Button onClick={handleAddSupplierItem}>
                         <Plus className="w-4 h-4 mr-2" />
                         Legg til produkt
@@ -578,6 +582,16 @@ export default function SupplierDetailPage() {
                   )}
                 </CardContent>
               </Card>
+            </motion.div>
+          )}
+
+          {/* Attachments Tab */}
+          {activeTab === 'attachments' && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <SupplierAttachments supplierId={supplier.id} />
             </motion.div>
           )}
         </div>

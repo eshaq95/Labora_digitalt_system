@@ -6,7 +6,21 @@ import { useToast } from '@/components/ui/toast'
 import { Card, CardContent } from '@/components/ui/card'
 import { OrderInstructionsAlert } from '@/components/ui/order-instructions-alert'
 import { FreightOptimizer } from '@/components/ui/freight-optimizer'
-import { Plus, Trash2, Package, Building, AlertTriangle, DollarSign, Star } from 'lucide-react'
+import { Plus, Trash2, Package, Building, AlertTriangle, DollarSign, Star, Calendar, Clock } from 'lucide-react'
+
+// Helper functions for price validation
+function isPriceExpired(validUntil?: string | null): boolean {
+  if (!validUntil) return false
+  return new Date(validUntil) < new Date()
+}
+
+function isPriceExpiringSoon(validUntil?: string | null): boolean {
+  if (!validUntil) return false
+  const expiryDate = new Date(validUntil)
+  const thirtyDaysFromNow = new Date()
+  thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30)
+  return expiryDate <= thirtyDaysFromNow && expiryDate >= new Date()
+}
 
 type OrderLine = {
   itemId: string
@@ -22,8 +36,13 @@ type OrderLine = {
     discountCodeRequired?: string | null
     minimumOrderQty?: number | null
     isPrimarySupplier: boolean
+    priceValidUntil?: string | null
+    agreementReference?: string | null
   }
 }
+
+
+
 
 type FormData = {
   supplierId: string
@@ -74,6 +93,7 @@ export function OrderForm({ isOpen, onClose, onSave, suggestedItem }: OrderFormP
   const [departments, setDepartments] = useState<Department[]>([])
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadingItems, setLoadingItems] = useState(false)
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null)
   const { showToast } = useToast()
 
@@ -94,16 +114,65 @@ export function OrderForm({ isOpen, onClose, onSave, suggestedItem }: OrderFormP
   useEffect(() => {
     Promise.all([
       fetch('/api/suppliers').then(r => r.json()),
-      fetch('/api/departments').then(r => r.json()),
-      fetch('/api/items').then(r => r.json())
-    ]).then(([supps, depts, itms]) => {
+      fetch('/api/departments').then(r => r.json())
+    ]).then(([supps, depts]) => {
       setSuppliers(supps)
       setDepartments(depts)
-      setItems(itms)
     }).catch(() => {
       showToast('error', 'Kunne ikke laste referansedata')
     })
   }, [])
+
+  // Load items when supplier is selected
+  useEffect(() => {
+    if (formData.supplierId) {
+      setLoadingItems(true)
+      // Clear existing item selections when supplier changes
+      setFormData(prev => ({
+        ...prev,
+        lines: prev.lines.map(line => ({
+          ...line,
+          itemId: '',
+          item: undefined,
+          supplierItem: undefined
+        }))
+      }))
+      
+      fetch(`/api/supplier-items?supplierId=${formData.supplierId}`)
+        .then(r => r.json())
+        .then(supplierItems => {
+          // Extract items from supplier-item relationships
+          const availableItems = supplierItems.map((si: any) => ({
+            id: si.item.id,
+            name: si.item.name,
+            sku: si.item.sku,
+            supplierPartNumber: si.supplierPartNumber,
+            negotiatedPrice: si.negotiatedPrice,
+            listPrice: si.listPrice
+          }))
+          setItems(availableItems)
+        })
+        .catch(() => {
+          showToast('error', 'Kunne ikke laste varer for valgt leverandør')
+          setItems([])
+        })
+        .finally(() => {
+          setLoadingItems(false)
+        })
+    } else {
+      setItems([])
+      // Clear item selections when no supplier is selected
+      setFormData(prev => ({
+        ...prev,
+        lines: prev.lines.map(line => ({
+          ...line,
+          itemId: '',
+          item: undefined,
+          supplierItem: undefined
+        }))
+      }))
+    }
+  }, [formData.supplierId])
 
   // Update selected supplier when supplierId changes
   useEffect(() => {
@@ -240,15 +309,33 @@ export function OrderForm({ isOpen, onClose, onSave, suggestedItem }: OrderFormP
       const response = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
-          ...formData,
-          expectedDate: formData.expectedDate || null
+          supplierId: formData.supplierId,
+          priority: formData.priority,
+          expectedDate: formData.expectedDate || null,
+          notes: formData.notes,
+          lines: formData.lines
         })
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Ukjent feil')
+        let errorMessage = 'Ukjent feil'
+        try {
+          const error = await response.json()
+          errorMessage = error.error || error.message || 'Ukjent feil'
+        } catch {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`
+        }
+        throw new Error(errorMessage)
+      }
+
+      // Try to parse response, but don't fail if it's empty
+      let result = null
+      try {
+        result = await response.json()
+      } catch {
+        // Empty response is OK for successful creation
       }
 
       showToast('success', 'Bestilling opprettet')
@@ -352,12 +439,19 @@ export function OrderForm({ isOpen, onClose, onSave, suggestedItem }: OrderFormP
                             className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                             value={line.itemId}
                             onChange={(e) => updateLine(index, 'itemId', e.target.value)}
+                            disabled={!formData.supplierId || loadingItems}
                             required
                           >
-                            <option value="">Velg vare</option>
+                            <option value="">
+                              {!formData.supplierId 
+                                ? 'Velg leverandør først' 
+                                : loadingItems 
+                                ? 'Laster varer...' 
+                                : 'Velg vare'}
+                            </option>
                             {items.map(item => (
                               <option key={item.id} value={item.id}>
-                                {item.name}
+                                {item.name} {(item as any).supplierPartNumber ? `(${(item as any).supplierPartNumber})` : ''}
                               </option>
                             ))}
                           </select>
@@ -426,21 +520,73 @@ export function OrderForm({ isOpen, onClose, onSave, suggestedItem }: OrderFormP
                         </div>
                         
                         {line.supplierItem && (
-                          <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/30 p-2 rounded">
+                          <div className={`flex items-center justify-between p-2 rounded ${
+                            isPriceExpired(line.supplierItem.priceValidUntil)
+                              ? 'bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800'
+                              : isPriceExpiringSoon(line.supplierItem.priceValidUntil)
+                              ? 'bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800'
+                              : 'bg-green-50 dark:bg-green-900/30'
+                          }`}>
                             <div className="flex items-center gap-2">
-                              <DollarSign className="w-3 h-3 text-green-600" />
-                              <span className="font-medium text-green-700 dark:text-green-300">
+                              <DollarSign className={`w-3 h-3 ${
+                                isPriceExpired(line.supplierItem.priceValidUntil)
+                                  ? 'text-red-600'
+                                  : isPriceExpiringSoon(line.supplierItem.priceValidUntil)
+                                  ? 'text-amber-600'
+                                  : 'text-green-600'
+                              }`} />
+                              <span className={`font-medium ${
+                                isPriceExpired(line.supplierItem.priceValidUntil)
+                                  ? 'text-red-700 dark:text-red-300'
+                                  : isPriceExpiringSoon(line.supplierItem.priceValidUntil)
+                                  ? 'text-amber-700 dark:text-amber-300'
+                                  : 'text-green-700 dark:text-green-300'
+                              }`}>
                                 {line.supplierItem.negotiatedPrice.toFixed(2)} NOK
                               </span>
                               {line.supplierItem.isPrimarySupplier && (
                                 <Star className="w-3 h-3 text-yellow-500" />
                               )}
+                              {isPriceExpired(line.supplierItem.priceValidUntil) && (
+                                <AlertTriangle className="w-3 h-3 text-red-600" />
+                              )}
+                              {isPriceExpiringSoon(line.supplierItem.priceValidUntil) && !isPriceExpired(line.supplierItem.priceValidUntil) && (
+                                <Clock className="w-3 h-3 text-amber-600" />
+                              )}
                             </div>
-                            {line.supplierItem.discountCodeRequired && (
-                              <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs font-mono">
-                                Kode påkrevd
-                              </span>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {line.supplierItem.discountCodeRequired && (
+                                <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs font-mono">
+                                  {line.supplierItem.discountCodeRequired}
+                                </span>
+                              )}
+                              {line.supplierItem.agreementReference && (
+                                <span className="text-xs text-gray-600 dark:text-gray-400">
+                                  {line.supplierItem.agreementReference}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Price validation warnings */}
+                        {line.supplierItem && isPriceExpired(line.supplierItem.priceValidUntil) && (
+                          <div className="flex items-center gap-2 p-2 bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-xs text-red-700 dark:text-red-300">
+                            <AlertTriangle className="w-3 h-3" />
+                            <span className="font-medium">
+                              Prisavtalen utløp {new Date(line.supplierItem.priceValidUntil!).toLocaleDateString('no-NO')}. 
+                              Verifiser pris før bestilling.
+                            </span>
+                          </div>
+                        )}
+                        
+                        {line.supplierItem && isPriceExpiringSoon(line.supplierItem.priceValidUntil) && !isPriceExpired(line.supplierItem.priceValidUntil) && (
+                          <div className="flex items-center gap-2 p-2 bg-amber-100 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded text-xs text-amber-700 dark:text-amber-300">
+                            <Clock className="w-3 h-3" />
+                            <span>
+                              Prisavtalen utløper {new Date(line.supplierItem.priceValidUntil!).toLocaleDateString('no-NO')}. 
+                              Vurder å reforhandle snart.
+                            </span>
                           </div>
                         )}
                         

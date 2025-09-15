@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { PageLayout } from '@/components/layout/page-layout'
+import { StatHeader } from '@/components/ui/stat-header'
+import { StatusChip } from '@/components/ui/status-chip'
+import { LowStockTable } from '@/components/ui/compact-table'
 import { motion } from 'framer-motion'
-import { AlertTriangle, Clock, TrendingUp, Package, Zap, BarChart3, Activity, DollarSign, FileText } from 'lucide-react'
+import { AlertTriangle, Clock, Package, TrendingUp, BarChart3, FileText, ExternalLink } from 'lucide-react'
 
-type AlertLow = { itemId: string; name: string; minStock: number; onHand: number }
+type AlertLow = { itemId: string; name: string; minStock: number; onHand: number; department?: string; location?: string }
 type Expiring = { id: string; item: { name: string } | null; location: { name: string } | null; expiryDate: string | null; quantity: number }
 type ExpiringAgreement = { id: string; itemName: string; supplierName: string; agreementReference: string | null; expiryDate: string | null; daysUntilExpiry: number | null }
 type OutdatedPrice = { id: string; itemName: string; supplierName: string; lastVerified: string; daysSinceVerified: number }
+
+
 
 export default function Home() {
   const [low, setLow] = useState<AlertLow[]>([])
@@ -18,56 +23,40 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    ;(async () => {
+    const fetchDashboardData = async () => {
       try {
-        // Fetch alerts
-        const [alertsRes, priceAlertsRes] = await Promise.all([
-          fetch('/api/alerts', { cache: 'no-store' }),
-          fetch('/api/price-alerts', { cache: 'no-store' })
+        // Fetch all data in parallel - more efficient
+        const [alertsRes, priceAlertsRes, itemsRes, ordersRes] = await Promise.all([
+          fetch('/api/alerts'),
+          fetch('/api/price-alerts'),
+          fetch('/api/items?limit=1000'), // Get more items for accurate stats
+          fetch('/api/orders')
         ])
         
-        // Sjekk om response er OK før parsing
-        let alertsData = { lowStock: [], expiring: [] }
-        let priceAlertsData = { expiringAgreements: [], outdatedPrices: [] }
+        // Process responses efficiently
+        const [alertsData, priceAlertsData, itemsData, ordersData] = await Promise.all([
+          alertsRes.ok ? alertsRes.json().catch(() => ({ lowStock: [], expiring: [] })) : { lowStock: [], expiring: [] },
+          priceAlertsRes.ok ? priceAlertsRes.json().catch(() => ({ expiringAgreements: [], outdatedPrices: [] })) : { expiringAgreements: [], outdatedPrices: [] },
+          itemsRes.ok ? itemsRes.json().catch(() => []) : [],
+          ordersRes.ok ? ordersRes.json().catch(() => []) : []
+        ])
         
-        if (alertsRes.ok) {
-          try {
-            alertsData = await alertsRes.json()
-          } catch (error) {
-            console.error('Error parsing alerts response:', error)
-          }
-        } else {
-          console.error('Alerts API error:', alertsRes.status, alertsRes.statusText)
-        }
-        
-        if (priceAlertsRes.ok) {
-          try {
-            priceAlertsData = await priceAlertsRes.json()
-          } catch (error) {
-            console.error('Error parsing price alerts response:', error)
-          }
-        } else {
-          console.error('Price alerts API error:', priceAlertsRes.status, priceAlertsRes.statusText)
-        }
-        
+        // Update state in batch
         setLow(Array.isArray(alertsData.lowStock) ? alertsData.lowStock : [])
         setExpiring(Array.isArray(alertsData.expiring) ? alertsData.expiring : [])
         setExpiringAgreements(Array.isArray(priceAlertsData.expiringAgreements) ? priceAlertsData.expiringAgreements : [])
         setOutdatedPrices(Array.isArray(priceAlertsData.outdatedPrices) ? priceAlertsData.outdatedPrices : [])
         
-        // Fetch stats
-        const [itemsRes, ordersRes] = await Promise.all([
-          fetch('/api/items', { cache: 'no-store' }),
-          fetch('/api/orders', { cache: 'no-store' })
-        ])
+        // Handle new paginated response structures
+        const items = itemsData.items || itemsData
+        const orders = ordersData.orders || ordersData
         
-        const itemsData = await itemsRes.json()
-        const ordersData = await ordersRes.json()
-        
-        const totalItems = Array.isArray(itemsData) ? itemsData.length : 0
-                       const pendingOrders = Array.isArray(ordersData) 
-                 ? ordersData.filter((o: any) => o.status === 'REQUESTED' || o.status === 'APPROVED' || o.status === 'ORDERED').length 
-                 : 0
+        // Use totalCount from pagination for accurate stats, fallback to array length
+        const totalItems = itemsData.pagination?.totalCount || (Array.isArray(items) ? items.length : 0)
+        // Calculate pending orders from available data
+        const pendingOrders = Array.isArray(orders) 
+          ? orders.filter((o: any) => o.status === 'REQUESTED' || o.status === 'APPROVED' || o.status === 'ORDERED').length 
+          : (ordersData.pagination?.totalCount || 0)
           
         setStats({ totalItems, pendingOrders })
         
@@ -76,345 +65,190 @@ export default function Home() {
     } finally {
       setLoading(false)
     }
-    })()
+  }
+
+    fetchDashboardData()
   }, [])
 
-  const dashboardStats = [
-    {
-      title: "Totalt varer",
-      value: stats.totalItems.toString(),
-      icon: Package,
-      color: "from-blue-500 to-blue-600",
-      bgColor: "from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20",
-      change: stats.totalItems > 0 ? "Registrerte varer" : "Ingen varer",
-      trend: "up"
-    },
-    {
-      title: "Kritisk beholdning",
-      value: low.length.toString(),
-      icon: AlertTriangle,
-      color: "from-amber-500 to-orange-600",
-      bgColor: "from-amber-50 to-orange-100 dark:from-amber-900/20 dark:to-orange-800/20",
-      change: low.length > 0 ? "Krever handling" : "Alt OK",
-      trend: low.length > 0 ? "down" : "up"
-    },
-    {
-      title: "Nær utløp",
-      value: expiring.length.toString(),
-      icon: Clock,
-      color: "from-red-500 to-red-600",
-      bgColor: "from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20",
-      change: expiring.length > 0 ? "Se detaljer" : "Ingen varsler",
-      trend: expiring.length > 0 ? "down" : "up"
-    },
-    {
-      title: "Pågående bestillinger",
-      value: stats.pendingOrders.toString(),
-      icon: TrendingUp,
-      color: "from-green-500 to-green-600",
-      bgColor: "from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20",
-      change: stats.pendingOrders > 0 ? "Venter behandling" : "Alle ferdig",
-      trend: stats.pendingOrders > 0 ? "up" : "down"
-    }
-  ]
+  // Convert to low stock table format
+  const lowStockItems = low.map(item => ({
+    id: item.itemId,
+    name: item.name,
+    location: item.location || 'Ukjent lokasjon',
+    currentStock: item.onHand,
+    minStock: item.minStock,
+    department: item.department,
+    isCritical: item.onHand === 0
+  }))
+
+  if (loading) {
+    return (
+      <PageLayout
+        title="Lagersystem"
+        subtitle="Oversikt over beholdning og kritiske varsler"
+        className="bg-slate-50"
+      >
+        {/* Loading skeleton */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-24 bg-slate-200 rounded-lg animate-pulse" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-64 bg-slate-200 rounded-lg animate-pulse" />
+          ))}
+        </div>
+      </PageLayout>
+    )
+  }
+
+  
 
   return (
     <PageLayout
       title="Lagersystem"
-      subtitle="Moderne oversikt over beholdning og kritiske varsler"
-      className="bg-gradient-to-br from-neutral-50 via-white to-blue-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900"
+      subtitle="Oversikt over beholdning og kritiske varsler"
+      className="bg-slate-50"
     >
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
+        transition={{ duration: 0.15 }}
       >
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {dashboardStats.map((stat, index) => (
-            <motion.div
-              key={stat.title}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: index * 0.1 }}
-            >
-              <Card className="relative overflow-hidden group hover:scale-105 transition-all duration-300">
-                <div className={`absolute inset-0 bg-gradient-to-br ${stat.bgColor} opacity-50`} />
-                <CardContent className="p-6 relative">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-text-secondary">
-                        {stat.title}
-                      </p>
-                      <p className="text-3xl font-bold text-text-primary">
-                        {stat.value}
-                      </p>
-                      <div className="flex items-center gap-1">
-                        <Activity className={`w-3 h-3 ${stat.trend === 'up' ? 'text-success' : 'text-error'}`} />
-                        <span className={`text-xs font-medium ${stat.trend === 'up' ? 'text-success' : 'text-error'}`}>
-                          {stat.change}
-                        </span>
-                      </div>
-                    </div>
-                    <div className={`p-3 rounded-2xl bg-gradient-to-br ${stat.color} shadow-lg`}>
-                      <stat.icon className="w-6 h-6 text-white" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
+        {/* Primary Action */}
+        <div className="mb-6">
+          <Button
+            onClick={() => window.location.href = '/scan'}
+            className="px-6 py-3 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors duration-150 font-medium"
+          >
+            <Package className="h-5 w-5 mr-2" />
+            Scan & Go
+          </Button>
         </div>
 
-        {/* Alerts Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <StatHeader
+            title="Totalt varer"
+            value={stats.totalItems}
+            subtitle="Registrerte varer"
+            icon={<Package className="h-4 w-4" />}
+          />
+          <StatHeader
+            title="Lav beholdning"
+            value={low.length}
+            subtitle={low.length > 0 ? "Under minimum" : "Alt OK"}
+            icon={<AlertTriangle className="h-4 w-4" />}
+            status={low.length > 0 ? "warning" : "success"}
+          />
+          <StatHeader
+            title="Nær utløp"
+            value={expiring.length}
+            subtitle={expiring.length > 0 ? "Se detaljer" : "Ingen varsler"}
+            icon={<Clock className="h-4 w-4" />}
+            status={expiring.length > 0 ? "danger" : "success"}
+          />
+          <StatHeader
+            title="Pågående bestillinger"
+            value={stats.pendingOrders}
+            subtitle={stats.pendingOrders > 0 ? "Venter behandling" : "Alle ferdig"}
+            icon={<TrendingUp className="h-4 w-4" />}
+            status="success"
+          />
+        </div>
+
+        {/* Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Low Stock Alert */}
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-          >
-            <Card className="h-full">
-          <CardHeader>
-                <CardTitle className="flex items-center gap-3">
-                  <div className="p-2 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl">
-                    <AlertTriangle className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold">Kritisk beholdning</h3>
-                    <p className="text-sm text-text-secondary font-normal">
-                      Varer som trenger påfyll
-                    </p>
-                  </div>
-                </CardTitle>
-          </CardHeader>
-              <CardContent className="space-y-4">
-                {loading ? (
-                  <div className="space-y-3">
-                    {[1,2,3].map(i => (
-                      <div key={i} className="animate-pulse">
-                        <div className="h-16 bg-surface rounded-xl"></div>
-                      </div>
-                    ))}
-                  </div>
-                ) : low.length === 0 ? (
-                  <div className="text-center py-8">
-                    <div className="w-16 h-16 bg-gradient-to-br from-success-500 to-success-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Package className="w-8 h-8 text-white" />
-                    </div>
-                    <p className="text-text-primary font-medium">Alle varer har god beholdning</p>
-                    <p className="text-text-secondary text-sm mt-1">Ingen kritiske varsler for øyeblikket</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {low.slice(0, 5).map((item, index) => (
-                      <motion.div
-                        key={item.itemId}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.1 }}
-                        className="flex items-center justify-between p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/10 dark:to-orange-900/10 rounded-xl border border-amber-200 dark:border-amber-800/30"
+          <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-lg shadow-sm">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Lav beholdning</h2>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide mt-1">
+                Varer under minimum nivå
+              </p>
+            </div>
+            <div className="p-4">
+              {low.length === 0 ? (
+                <div className="text-center py-8">
+                  <Package className="h-8 w-8 text-slate-400 dark:text-slate-500 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Alle varer har god beholdning</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Ingen varer under minimum nivå</p>
+                </div>
+              ) : (
+                <div>
+                  <LowStockTable 
+                    items={lowStockItems.slice(0, 7)}
+                    onItemClick={(item) => window.location.href = `/inventory?highlight=${item.id}`}
+                  />
+                  {low.length > 7 && (
+                    <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        Viser {Math.min(7, low.length)} av {low.length} varer
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => window.location.href = '/inventory?lowStock=true'}
+                        className="text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 h-auto p-0"
                       >
-                        <div className="flex items-center gap-3">
-                          <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
-                          <span className="font-medium text-text-primary">{item.name}</span>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-sm font-semibold text-amber-700 dark:text-amber-400">
-                            {item.onHand} / {item.minStock}
-                          </div>
-                          <div className="text-xs text-text-tertiary">
-                            Minimum
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
+                        Vis alle <ExternalLink className="h-3 w-3 ml-1" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
 
-          {/* Expiring Items Alert */}
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.5 }}
-          >
-            <Card className="h-full">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-3">
-                  <div className="p-2 bg-gradient-to-br from-red-500 to-red-600 rounded-xl">
-                    <Clock className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold">Nær utløpsdato</h3>
-                    <p className="text-sm text-text-secondary font-normal">
-                      Varer som utløper snart
-                    </p>
-                  </div>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {loading ? (
-                  <div className="space-y-3">
-                    {[1,2,3].map(i => (
-                      <div key={i} className="animate-pulse">
-                        <div className="h-16 bg-surface rounded-xl"></div>
-                      </div>
-                    ))}
-                  </div>
-                ) : expiring.length === 0 ? (
-                  <div className="text-center py-8">
-                    <div className="w-16 h-16 bg-gradient-to-br from-success-500 to-success-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Clock className="w-8 h-8 text-white" />
-                    </div>
-                    <p className="text-text-primary font-medium">Ingen varer nær utløp</p>
-                    <p className="text-text-secondary text-sm mt-1">Alle datoer ser bra ut</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {expiring.slice(0, 5).map((lot, index) => (
-                      <motion.div
-                        key={lot.id}
-                        initial={{ opacity: 0, x: 10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.1 }}
-                        className="flex items-center justify-between p-4 bg-gradient-to-r from-red-50 to-red-50 dark:from-red-900/10 dark:to-red-900/10 rounded-xl border border-red-200 dark:border-red-800/30"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                          <div>
-                            <div className="font-medium text-text-primary">
-                              {lot.item?.name || 'Ukjent vare'}
-                            </div>
-                            <div className="text-xs text-text-tertiary">
-                              {lot.location?.name || 'Ukjent lokasjon'}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-sm font-semibold text-red-700 dark:text-red-400">
-                            {lot.quantity} stk
-                          </div>
-                          <div className="text-xs text-text-tertiary">
-                            {lot.expiryDate ? new Date(lot.expiryDate).toLocaleDateString('nb-NO') : '—'}
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
+          {/* Quick Actions */}
+          <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-lg shadow-sm">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Hurtighandlinger</h2>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide mt-1">
+                Vanlige oppgaver
+              </p>
+            </div>
+            <div className="p-4 space-y-3">
+              <Button
+                variant="outline"
+                onClick={() => window.location.href = '/inventory?expiring=true'}
+                className="w-full justify-between text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                <div className="flex items-center">
+                  <Clock className="h-4 w-4 mr-2" />
+                  Vis varer etter utløpsdato
+                </div>
+                {expiring.length > 0 && (
+                  <StatusChip variant="danger" size="sm">
+                    {expiring.length}
+                  </StatusChip>
                 )}
-          </CardContent>
-        </Card>
-          </motion.div>
-
-          {/* Price & Agreement Alerts */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.6 }}
-          >
-            <Card className="h-full">
-          <CardHeader>
-                <CardTitle className="flex items-center gap-3">
-                  <div className="p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl">
-                    <DollarSign className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold">Pris- og avtalevarsler</h3>
-                    <p className="text-sm text-text-secondary font-normal">
-                      Avtaler og priser som trenger oppfølging
-                    </p>
-                  </div>
-                </CardTitle>
-          </CardHeader>
-              <CardContent className="space-y-4">
-            {loading ? (
-                  <div className="space-y-3">
-                    {[1,2,3].map(i => (
-                      <div key={i} className="animate-pulse">
-                        <div className="h-16 bg-surface rounded-xl"></div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (expiringAgreements.length === 0 && outdatedPrices.length === 0) ? (
-                  <div className="text-center py-8">
-                    <div className="w-16 h-16 bg-gradient-to-br from-success-500 to-success-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <DollarSign className="w-8 h-8 text-white" />
-                    </div>
-                    <p className="text-text-primary font-medium">Alle avtaler er oppdaterte</p>
-                    <p className="text-text-secondary text-sm mt-1">Ingen prisvarsler for øyeblikket</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {/* Expiring Agreements */}
-                    {expiringAgreements.slice(0, 3).map((agreement, index) => (
-                      <motion.div
-                        key={`agreement-${agreement.id}`}
-                        initial={{ opacity: 0, x: 10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.1 }}
-                        className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-blue-50 dark:from-blue-900/10 dark:to-blue-900/10 rounded-xl border border-blue-200 dark:border-blue-800/30"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                          <div>
-                            <div className="font-medium text-text-primary">
-                              {agreement.supplierName}
-                            </div>
-                            <div className="text-xs text-text-tertiary">
-                              {agreement.agreementReference || 'Avtale utløper'}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-sm font-semibold text-blue-700 dark:text-blue-400">
-                            {agreement.daysUntilExpiry} dager
-                          </div>
-                          <div className="text-xs text-text-tertiary">
-                            igjen
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                    
-                    {/* Outdated Prices */}
-                    {outdatedPrices.slice(0, 2).map((price, index) => (
-                      <motion.div
-                        key={`price-${price.id}`}
-                        initial={{ opacity: 0, x: 10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: (expiringAgreements.length + index) * 0.1 }}
-                        className="flex items-center justify-between p-4 bg-gradient-to-r from-amber-50 to-amber-50 dark:from-amber-900/10 dark:to-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-800/30"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
-                          <div>
-                            <div className="font-medium text-text-primary">
-                              {price.itemName}
-                            </div>
-                            <div className="text-xs text-text-tertiary">
-                              {price.supplierName}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-sm font-semibold text-amber-700 dark:text-amber-400">
-                            {price.daysSinceVerified} dager
-                          </div>
-                          <div className="text-xs text-text-tertiary">
-                            siden sjekk
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-            )}
-          </CardContent>
-        </Card>
-          </motion.div>
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => window.location.href = '/orders'}
+                className="w-full justify-start text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Opprett ny bestilling
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => window.location.href = '/receipts'}
+                className="w-full justify-start text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                <Package className="h-4 w-4 mr-2" />
+                Registrer varemottak
+              </Button>
+            </div>
+          </div>
         </div>
       </motion.div>
     </PageLayout>

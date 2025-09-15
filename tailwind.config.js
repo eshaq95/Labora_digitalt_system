@@ -10,6 +10,13 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // Professional Brand Colors (Labora Blue)
+        brand: {
+          DEFAULT: '#2563eb',
+          50: '#eff6ff',
+          600: '#2563eb'
+        },
+        
         // Modern Labora Brand Colors
         labora: {
           DEFAULT: "#136DF5",

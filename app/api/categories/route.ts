@@ -1,23 +1,25 @@
 import { prisma } from '@/lib/prisma'
+import { requireAuth, requireRole } from '@/lib/auth-middleware'
+import { NextResponse } from 'next/server'
 
-export async function GET() {
+export const GET = requireAuth(async (req) => {
   const categories = await prisma.category.findMany({
     orderBy: { name: 'asc' },
   })
-  return Response.json(categories)
-}
+  return NextResponse.json(categories)
+})
 
-export async function POST(req: Request) {
+export const POST = requireRole(['ADMIN', 'PURCHASER'])(async (req) => {
   const body = await req.json().catch(() => ({}))
   const { name, code, description } = body || {}
   
   if (!name || !code) {
-    return Response.json({ error: 'name and code required' }, { status: 400 })
+    return NextResponse.json({ error: 'name and code required' }, { status: 400 })
   }
   
   const category = await prisma.category.create({
     data: { name, code, description: description || null }
   })
   
-  return Response.json(category, { status: 201 })
-}
+  return NextResponse.json(category, { status: 201 })
+})

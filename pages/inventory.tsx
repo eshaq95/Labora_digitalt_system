@@ -34,10 +34,20 @@ type InventoryLot = {
 
 export default function InventoryPage() {
   const [inventory, setInventory] = useState<InventoryLot[]>([])
+  const [allInventory, setAllInventory] = useState<InventoryLot[]>([]) // For accurate statistics
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [filter, setFilter] = useState<'all' | 'lowStock' | 'expiring'>('all')
   const [scannerOpen, setScannerOpen] = useState(false)
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 50,
+    totalCount: 0,
+    totalPages: 0,
+    hasNextPage: false,
+    hasPreviousPage: false,
+    totalUnits: 0
+  })
   const { showToast } = useToast()
 
   const filteredInventory = inventory.filter(lot => 
@@ -47,16 +57,34 @@ export default function InventoryPage() {
     lot.lotNumber?.toLowerCase().includes(search.toLowerCase())
   )
 
+  // Calculate total units (quantity) on current page
+  const totalUnitsOnPage = filteredInventory.reduce((sum, lot) => sum + lot.quantity, 0)
+
   async function load() {
     setLoading(true)
     try {
+      // Load filtered lots for display with pagination
       const params = new URLSearchParams()
       if (filter === 'lowStock') params.set('lowStock', 'true')
       if (filter === 'expiring') params.set('expiringSoon', 'true')
+      params.set('page', pagination.page.toString())
+      params.set('limit', pagination.limit.toString())
       
       const res = await fetch(`/api/inventory?${params.toString()}`, { cache: 'no-store' })
       const data = await res.json()
-      setInventory(Array.isArray(data) ? data : [])
+      const lots = data.lots || data
+      setInventory(Array.isArray(lots) ? lots : [])
+      
+      // Update pagination info if available
+      if (data.pagination) {
+        setPagination(data.pagination)
+      }
+      
+      // Load ALL lots for accurate statistics (without filters)
+      const allLotsRes = await fetch('/api/inventory?limit=10000', { cache: 'no-store' })
+      const allLotsData = await allLotsRes.json()
+      const allLots = allLotsData.lots || allLotsData
+      setAllInventory(Array.isArray(allLots) ? allLots : [])
     } catch {
       showToast('error', 'Kunne ikke laste lagerstatus')
     } finally {
@@ -64,7 +92,14 @@ export default function InventoryPage() {
     }
   }
 
-  useEffect(() => { load() }, [filter])
+  useEffect(() => { load() }, [filter, pagination.page])
+  
+  // Reset to page 1 when filter changes
+  useEffect(() => {
+    if (pagination.page !== 1) {
+      setPagination(prev => ({ ...prev, page: 1 }))
+    }
+  }, [filter])
 
   const handleScanSuccess = (result: ScanResult) => {
     switch (result.type) {
@@ -98,8 +133,13 @@ export default function InventoryPage() {
     }
   };
 
-  // Funksjon for å sjekke om en individuell lot har lav beholdning (for visning)
-  const isLowStock = (lot: InventoryLot) => lot.quantity <= lot.item.minStock
+  // Funksjon for å sjekke om en vare har lav TOTAL beholdning (for visning)
+  const isLowStock = (lot: InventoryLot) => {
+    const itemTotal = allInventory
+      .filter(l => l.item.id === lot.item.id)
+      .reduce((sum, l) => sum + l.quantity, 0)
+    return itemTotal <= lot.item.minStock
+  }
   
   const isExpiringSoon = (lot: InventoryLot) => {
     if (!lot.expiryDate) return false
@@ -109,18 +149,19 @@ export default function InventoryPage() {
     return expiryDate <= thirtyDaysFromNow
   }
 
-  // Beregn totale enheter (sum av alle quantities)
-  const totalUnits = inventory.reduce((sum, lot) => sum + lot.quantity, 0)
+  // Beregn totale enheter (sum av alle quantities fra ALL inventory)
+  const totalUnits = allInventory.reduce((sum, lot) => sum + lot.quantity, 0)
   
-  // Beregn lav beholdning basert på total per vare (for statistikk), ikke per lot
+  // Beregn lav beholdning basert på ALL inventory for accurate statistics
   const itemStockMap = new Map<string, { total: number; minStock: number }>()
-  inventory.forEach(lot => {
+  allInventory.forEach(lot => {
     const existing = itemStockMap.get(lot.item.id) || { total: 0, minStock: lot.item.minStock }
     existing.total += lot.quantity
     itemStockMap.set(lot.item.id, existing)
   })
   
   // Antall VARER (ikke lots) med lav total beholdning
+  // Konsistent med dashboard: onHand <= minStock
   const lowStockItems = Array.from(itemStockMap.entries()).filter(([_, stock]) => stock.total <= stock.minStock)
   const lowStockCount = lowStockItems.length
   const expiringCount = inventory.filter(isExpiringSoon).length
@@ -336,6 +377,76 @@ export default function InventoryPage() {
                       ))}
                     </TableBody>
                   </Table>
+                </div>
+              </div>
+            )}
+            
+            {/* Pagination Controls */}
+            {!loading && inventory.length > 0 && pagination.totalPages > 1 && (
+              <div className="flex items-center justify-center px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex items-center space-x-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                    disabled={!pagination.hasPreviousPage}
+                    className="px-3 py-1"
+                  >
+                    Forrige
+                  </Button>
+                  
+                  {/* Page Numbers */}
+                  {(() => {
+                    const { page, totalPages } = pagination
+                    const pages = []
+                    
+                    // Always show first page
+                    if (totalPages > 1) pages.push(1)
+                    
+                    // Show pages around current page
+                    const start = Math.max(2, page - 2)
+                    const end = Math.min(totalPages - 1, page + 2)
+                    
+                    // Add ellipsis if needed
+                    if (start > 2) pages.push('...')
+                    
+                    // Add middle pages
+                    for (let i = start; i <= end; i++) {
+                      if (i !== 1 && i !== totalPages) pages.push(i)
+                    }
+                    
+                    // Add ellipsis if needed
+                    if (end < totalPages - 1) pages.push('...')
+                    
+                    // Always show last page
+                    if (totalPages > 1) pages.push(totalPages)
+                    
+                    return pages.map((pageNum, index) => (
+                      pageNum === '...' ? (
+                        <span key={`ellipsis-${index}`} className="px-2 text-gray-400">...</span>
+                      ) : (
+                        <Button
+                          key={pageNum}
+                          variant={pageNum === page ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setPagination(prev => ({ ...prev, page: pageNum as number }))}
+                          className="w-8 h-8 p-0 text-sm"
+                        >
+                          {pageNum}
+                        </Button>
+                      )
+                    ))
+                  })()}
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                    disabled={!pagination.hasNextPage}
+                    className="px-3 py-1"
+                  >
+                    Neste
+                  </Button>
                 </div>
               </div>
             )}

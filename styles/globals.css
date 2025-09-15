@@ -126,26 +126,65 @@ h4 { font-size: 1.25rem; font-weight: 600; }
 
 /* Modern Card Styles */
 .modern-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 1rem;
-  box-shadow: var(--shadow-md);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.8) 100%);
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  border-radius: 1.25rem;
+  box-shadow: 
+    0 1px 3px rgba(0, 0, 0, 0.05),
+    0 4px 6px rgba(0, 0, 0, 0.02),
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  backdrop-filter: blur(8px);
+  transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  position: relative;
+  overflow: hidden;
+}
+
+.modern-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(99, 102, 241, 0.2) 50%, transparent 100%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
 
 .modern-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
-  border-color: var(--color-border-hover);
+  transform: translateY(-1px);
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.08),
+    0 8px 25px rgba(0, 0, 0, 0.04),
+    0 0 0 1px rgba(99, 102, 241, 0.1),
+    0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+  border-color: rgba(99, 102, 241, 0.15);
+}
+
+.modern-card:hover::before {
+  opacity: 1;
 }
 
 .dark .modern-card {
-  background: linear-gradient(145deg, var(--color-surface) 0%, rgba(30, 41, 59, 0.8) 100%);
-  box-shadow: var(--shadow-lg), var(--glow-surface);
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.8) 100%);
+  border: 1px solid rgba(71, 85, 105, 0.3);
+  box-shadow: 
+    0 1px 3px rgba(0, 0, 0, 0.2),
+    0 4px 6px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(148, 163, 184, 0.05) inset;
+}
+
+.dark .modern-card::before {
+  background: linear-gradient(90deg, transparent 0%, rgba(99, 102, 241, 0.3) 50%, transparent 100%);
 }
 
 .dark .modern-card:hover {
-  box-shadow: var(--shadow-xl), var(--glow-surface);
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    0 8px 25px rgba(0, 0, 0, 0.15),
+    0 0 0 1px rgba(99, 102, 241, 0.2),
+    0 0 0 1px rgba(148, 163, 184, 0.1) inset;
+  border-color: rgba(99, 102, 241, 0.25);
 }
 
 /* Modern Button Styles */
@@ -206,7 +245,7 @@ h4 { font-size: 1.25rem; font-weight: 600; }
 /* Modern Table */
 .modern-table {
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  border: 1px solid rgba(229, 231, 235, 0.5); /* Very subtle border */
   border-radius: 1rem;
   overflow: hidden;
   box-shadow: var(--shadow-sm);
@@ -214,7 +253,36 @@ h4 { font-size: 1.25rem; font-weight: 600; }
 
 .dark .modern-table {
   background: linear-gradient(145deg, var(--color-surface) 0%, rgba(30, 41, 59, 0.9) 100%);
+  border: 1px solid rgba(71, 85, 105, 0.2); /* Very subtle dark border */
   box-shadow: var(--shadow-md);
+}
+
+/* Ultra-subtle table borders */
+.modern-table table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.modern-table tbody tr {
+  border-bottom: 1px solid rgba(229, 231, 235, 0.3) !important; /* Ultra-subtle light border */
+}
+
+.dark .modern-table tbody tr {
+  border-bottom: 1px solid rgba(71, 85, 105, 0.15) !important; /* Ultra-subtle dark border */
+}
+
+/* Remove border from last row */
+.modern-table tbody tr:last-child {
+  border-bottom: none !important;
+}
+
+/* Subtle hover effect */
+.modern-table tbody tr:hover {
+  background: rgba(249, 250, 251, 0.5) !important;
+}
+
+.dark .modern-table tbody tr:hover {
+  background: rgba(51, 65, 85, 0.2) !important;
 }
 
 /* Animations */

@@ -12,6 +12,8 @@ import { ItemForm } from '@/components/forms/item-form'
 import { motion } from 'framer-motion'
 import { Plus, Edit, Trash2, Package, ShoppingCart, Upload, Eye } from 'lucide-react'
 import { useRouter } from 'next/router'
+// import { useItems, useDeleteItem, type Item } from '@/lib/hooks/useItems'
+// import { useDebouncedSearch } from '@/lib/hooks/useDebounce'
 
 
 
@@ -40,6 +42,61 @@ function getHMSDescription(hmsCodes: string): string {
 }
 
 
+// Item type is now imported from useItems hook
+
+// Hurtigvalg (Presets) basert på faktiske importerte kategorier og avdelinger
+const QUICK_FILTERS = [
+  {
+    id: 'all',
+    name: 'Alle',
+    icon: '📦',
+    color: 'bg-gray-100 text-gray-700 border-gray-300',
+    filters: { department: null, category: null }
+  },
+  {
+    id: 'hms',
+    name: 'HMS',
+    icon: '⚠️',
+    color: 'bg-purple-100 text-purple-700 border-purple-300',
+    filters: { department: null, category: 'HMS' }
+  },
+  {
+    id: 'utstyr',
+    name: 'Utstyr og Instrumenter',
+    icon: '🔬',
+    color: 'bg-amber-100 text-amber-700 border-amber-300',
+    filters: { department: null, category: 'Utstyr og Instrumenter' }
+  },
+  {
+    id: 'kjemikalier',
+    name: 'Medier / kjemikalier',
+    icon: '🧪',
+    color: 'bg-red-100 text-red-700 border-red-300',
+    filters: { department: null, category: 'Medier / kjemikalier' }
+  },
+  {
+    id: 'mikro',
+    name: 'Mikrobiologi',
+    icon: '🦠',
+    color: 'bg-blue-100 text-blue-700 border-blue-300',
+    filters: { department: 'Mikrobiologi', category: null }
+  },
+  {
+    id: 'kjemi',
+    name: 'Kjemi',
+    icon: '⚗️',
+    color: 'bg-green-100 text-green-700 border-green-300',
+    filters: { department: 'Kjemi', category: null }
+  },
+  {
+    id: 'gasser',
+    name: 'Gasser',
+    icon: '💨',
+    color: 'bg-cyan-100 text-cyan-700 border-cyan-300',
+    filters: { department: null, category: 'Gasser' }
+  }
+]
+
 type Item = { 
   id: string; 
   sku: string; 
@@ -58,48 +115,9 @@ type Item = {
   requiresLotNumber: boolean;
   defaultLocationId?: string | null;
   defaultLocation?: { name: string } | null;
-  currentStock: number; // Ny: Total lagerbeholdning
-  hmsCodes?: string | null; // Ny: Spesifikke HMS-koder
+  currentStock: number;
+  hmsCodes?: string | null;
 }
-
-// Hurtigvalg (Presets) for å gjenskape de 4 hovedkategoriene fra Monday
-const QUICK_FILTERS = [
-  {
-    id: 'all',
-    name: 'Alle',
-    icon: '📦',
-    color: 'bg-gray-100 text-gray-700 border-gray-300',
-    filters: { department: null, category: null }
-  },
-  {
-    id: 'hms',
-    name: 'HMS',
-    icon: '⚠️',
-    color: 'bg-purple-100 text-purple-700 border-purple-300',
-    filters: { department: null, category: 'HMS' }
-  },
-  {
-    id: 'mikro_utstyr',
-    name: 'Mikro utstyr',
-    icon: '🔬',
-    color: 'bg-amber-100 text-amber-700 border-amber-300',
-    filters: { department: null, category: 'Mikro utstyr' }
-  },
-  {
-    id: 'mikro_kjemi',
-    name: 'Mikro kjemikalier og forbruksvarer',
-    icon: '🧪',
-    color: 'bg-red-100 text-red-700 border-red-300',
-    filters: { department: null, category: 'Mikro kjemikalier og forbruksvarer' }
-  },
-  {
-    id: 'kjemi_gass',
-    name: 'Kjemi kjemikalier og gass',
-    icon: '⚗️',
-    color: 'bg-green-100 text-green-700 border-green-300',
-    filters: { department: null, category: 'Kjemi kjemikalier og gass' }
-  }
-]
 
 export default function ItemsPage() {
   const [items, setItems] = useState<Item[]>([])
@@ -110,11 +128,55 @@ export default function ItemsPage() {
   const [groupBy, setGroupBy] = useState<'department' | 'category' | null>('department')
   const [modalOpen, setModalOpen] = useState(false)
   const [editItem, setEditItem] = useState<Item | null>(null)
-  const [loading, setLoading] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [loading, setLoading] = useState(false)
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(50)
+  const [totalItems, setTotalItems] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  
   const { showToast } = useToast()
   const router = useRouter()
+  
+  async function load() {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: itemsPerPage.toString(),
+      })
+      
+      if (search) params.set('search', search)
+      if (selectedDepartment) params.set('department', selectedDepartment)
+      if (selectedCategory) params.set('category', selectedCategory)
+      
+      const res = await fetch(`/api/items?${params.toString()}`, { cache: 'no-store' })
+      const data = await res.json()
+      
+      if (data.items) {
+        // New paginated response
+        setItems(data.items)
+        setTotalItems(data.pagination?.totalCount || 0)
+        setTotalPages(data.pagination?.totalPages || 1)
+      } else {
+        // Fallback for old response format
+        setItems(data)
+        setTotalItems(data.length)
+        setTotalPages(1)
+      }
+    } catch {
+      showToast('error', 'Kunne ikke laste varer')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { 
+    load() 
+  }, [currentPage, itemsPerPage, search, selectedDepartment, selectedCategory])
 
   // Hent unike avdelinger og kategorier for dropdown-filtre
   const departments = useMemo(() => {
@@ -176,20 +238,6 @@ export default function ItemsPage() {
     setSelectedCategory(filter.filters.category)
   }
 
-  async function load() {
-    setLoading(true)
-    try {
-      const res = await fetch('/api/items', { cache: 'no-store' })
-      setItems(await res.json())
-    } catch {
-      showToast('error', 'Kunne ikke laste varer')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => { load() }, [])
-
   async function remove(item: Item) {
     if (!confirm(`Slette "${item.name}"?`)) return
     try {
@@ -209,6 +257,16 @@ export default function ItemsPage() {
   function openCreate() {
     setEditItem(null)
     setModalOpen(true)
+  }
+
+  // Pagination functions
+  function goToPage(page: number) {
+    setCurrentPage(page)
+  }
+
+  function changeItemsPerPage(newLimit: number) {
+    setItemsPerPage(newLimit)
+    setCurrentPage(1) // Reset to first page when changing limit
   }
 
   function createOrderFromItem(item: Item) {
@@ -575,6 +633,106 @@ export default function ItemsPage() {
                     ))}
                   </TableBody>
                   </Table>
+                </div>
+              </div>
+              
+            )}
+            
+            {/* Pagination Controls */}
+            {totalItems > 0 && (
+              <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                {/* Items per page selector */}
+                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                  <span>Vis:</span>
+                  <select 
+                    value={itemsPerPage} 
+                    onChange={(e) => changeItemsPerPage(Number(e.target.value))}
+                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  >
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={200}>200</option>
+                    <option value={500}>500</option>
+                    <option value={1000}>Alle (kan være tregt)</option>
+                  </select>
+                  <span>av {totalItems} varer</span>
+                </div>
+                
+                {/* Page navigation */}
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => goToPage(1)}
+                      disabled={currentPage === 1}
+                      className="h-8 px-2"
+                    >
+                      Første
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => goToPage(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      className="h-8 px-2"
+                    >
+                      Forrige
+                    </Button>
+                    
+                    {/* Page numbers */}
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+                        
+                        return (
+                          <Button
+                            key={pageNum}
+                            variant={currentPage === pageNum ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => goToPage(pageNum)}
+                            className="h-8 w-8 p-0"
+                          >
+                            {pageNum}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => goToPage(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                      className="h-8 px-2"
+                    >
+                      Neste
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => goToPage(totalPages)}
+                      disabled={currentPage === totalPages}
+                      className="h-8 px-2"
+                    >
+                      Siste
+                    </Button>
+                  </div>
+                )}
+                
+                {/* Page info */}
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  {totalPages > 1 ? `Side ${currentPage} av ${totalPages}` : `${totalItems} varer totalt`}
                 </div>
               </div>
             )}

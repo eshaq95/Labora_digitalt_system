@@ -4,23 +4,23 @@ import { cn } from '@/lib/utils'
 import { Loader2 } from 'lucide-react'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none relative overflow-hidden',
+  'inline-flex items-center justify-center font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none',
   {
     variants: {
       variant: {
-        default: 'bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg',
-        outline: 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm hover:shadow-md',
-        ghost: 'text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800',
-        danger: 'bg-red-600 hover:bg-red-700 text-white shadow-md hover:shadow-lg',
-        success: 'bg-green-600 hover:bg-green-700 text-white shadow-md hover:shadow-lg',
-        link: 'text-blue-600 hover:text-blue-700 underline-offset-4 hover:underline p-0 h-auto',
+        default: 'bg-blue-600 hover:bg-blue-700 text-white',
+        outline: 'border border-slate-300 bg-white hover:bg-slate-50 text-slate-700',
+        ghost: 'text-slate-600 hover:text-slate-900 hover:bg-slate-50',
+        danger: 'bg-rose-600 hover:bg-rose-700 text-white',
+        success: 'bg-blue-600 hover:bg-blue-700 text-white',
+        link: 'text-slate-600 hover:text-slate-900 underline-offset-4 hover:underline p-0 h-auto',
       },
       size: {
-        xs: 'h-8 px-2 text-xs rounded-md',
-        sm: 'h-9 px-3 text-sm rounded-md',
-        md: 'h-10 px-4 text-sm rounded-lg',
-        lg: 'h-12 px-6 text-base rounded-xl',
-        xl: 'h-14 px-8 text-lg rounded-xl',
+        xs: 'h-7 px-2 text-xs rounded-md',
+        sm: 'h-8 px-3 text-sm rounded-md',
+        md: 'h-9 px-4 text-sm rounded-md',
+        lg: 'h-10 px-6 text-base rounded-md',
+        xl: 'h-12 px-8 text-lg rounded-md',
       },
     },
     defaultVariants: { variant: 'default', size: 'md' },

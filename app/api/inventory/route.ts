@@ -1,7 +1,9 @@
 import { prisma } from '@/lib/prisma'
+import { requireAuth, requireRole } from '@/lib/auth-middleware'
+import { NextResponse, NextRequest } from 'next/server'
 
 // Get current inventory status with filtering options
-export async function GET(req: Request) {
+export const GET = requireAuth(async (req: NextRequest) => {
   try {
     const { searchParams } = new URL(req.url)
     const itemId = searchParams.get('itemId')
@@ -30,46 +32,153 @@ export async function GET(req: Request) {
       }
     }
     
-    let inventoryLots = await prisma.inventoryLot.findMany({
-      where,
-      include: {
-        item: {
-          select: {
-            id: true,
-            sku: true,
-            name: true,
-            category: true,
-            minStock: true,
-            expiryTracking: true,
-            hazardous: true,
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '100')
+    const skip = (page - 1) * limit
+    
+    let inventoryLots: any[] = []
+    let totalCount = 0
+    
+    // Handle low stock filtering differently - filter first, then paginate
+    if (lowStock) {
+      // Calculate total stock per item to identify low stock items
+      const itemTotals = new Map<string, number>()
+      const allLots = await prisma.inventoryLot.findMany({
+        where: { quantity: { gt: 0 } },
+        include: { item: { select: { id: true, minStock: true } } }
+      })
+      
+      allLots.forEach(lot => {
+        const current = itemTotals.get(lot.item.id) || 0
+        itemTotals.set(lot.item.id, current + lot.quantity)
+      })
+      
+      // Get IDs of items with low total stock
+      const lowStockItemIds: string[] = []
+      allLots.forEach(lot => {
+        const totalStock = itemTotals.get(lot.item.id) || 0
+        if (totalStock <= lot.item.minStock && !lowStockItemIds.includes(lot.item.id)) {
+          lowStockItemIds.push(lot.item.id)
+        }
+      })
+      
+      console.log(`🔍 Debug inventory: Found ${lowStockItemIds.length} low stock items`)
+      
+      // Add low stock filter to where clause
+      where.itemId = { in: lowStockItemIds }
+      
+      // Now get total count and paginated results with the low stock filter applied
+      totalCount = await prisma.inventoryLot.count({ where })
+      
+      inventoryLots = await prisma.inventoryLot.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          item: {
+            select: {
+              id: true,
+              sku: true,
+              name: true,
+              category: { select: { name: true } },
+              minStock: true,
+              expiryTracking: true,
+              hazardous: true,
+            }
+          },
+          location: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+            }
           }
         },
-        location: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
-          }
+        orderBy: [
+          { expiryDate: 'asc' },
+          { item: { name: 'asc' } },
+        ]
+      })
+      
+      console.log(`📊 Debug inventory: Total low stock lots: ${totalCount}, Showing: ${inventoryLots.length}`)
+      
+      // For low stock, we need to calculate total units across ALL lots, not just current page
+      const allFilteredLots = await prisma.inventoryLot.findMany({
+        where,
+        select: { quantity: true }
+      })
+      const totalUnitsAllPages = allFilteredLots.reduce((sum, lot) => sum + lot.quantity, 0)
+      
+      return NextResponse.json({
+        lots: inventoryLots,
+        pagination: {
+          page,
+          limit,
+          totalCount,
+          totalPages: Math.ceil(totalCount / limit),
+          hasNextPage: page < Math.ceil(totalCount / limit),
+          hasPreviousPage: page > 1,
+          totalUnits: totalUnitsAllPages
         }
-      },
-      orderBy: [
-        { expiryDate: 'asc' },
-        { item: { name: 'asc' } },
-      ]
-    })
-    
-    // Filter for low stock if requested
-    if (lowStock) {
-      inventoryLots = inventoryLots.filter(lot => 
-        lot.quantity <= lot.item.minStock
-      )
+      })
+    } else {
+      // Normal flow for non-low-stock requests
+      totalCount = await prisma.inventoryLot.count({ where })
+      
+      inventoryLots = await prisma.inventoryLot.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          item: {
+            select: {
+              id: true,
+              sku: true,
+              name: true,
+              category: { select: { name: true } },
+              minStock: true,
+              expiryTracking: true,
+              hazardous: true,
+            }
+          },
+          location: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+            }
+          }
+        },
+        orderBy: [
+          { expiryDate: 'asc' },
+          { item: { name: 'asc' } },
+        ]
+      })
+      
+      // For normal requests, calculate total units across ALL lots
+      const allFilteredLots = await prisma.inventoryLot.findMany({
+        where,
+        select: { quantity: true }
+      })
+      const totalUnitsAllPages = allFilteredLots.reduce((sum, lot) => sum + lot.quantity, 0)
+      
+      return NextResponse.json({
+        lots: inventoryLots,
+        pagination: {
+          page,
+          limit,
+          totalCount,
+          totalPages: Math.ceil(totalCount / limit),
+          hasNextPage: page < Math.ceil(totalCount / limit),
+          hasPreviousPage: page > 1,
+          totalUnits: totalUnitsAllPages
+        }
+      })
     }
-    
-    return Response.json(inventoryLots)
   } catch (error) {
     console.error('Error fetching inventory:', error)
-    return Response.json({ 
-      error: 'Kunne ikke hente lagerstatus' 
-    }, { status: 500 })
+      return NextResponse.json({
+        error: 'Kunne ikke hente lagerstatus'
+      }, { status: 500 })
   }
-}
+})

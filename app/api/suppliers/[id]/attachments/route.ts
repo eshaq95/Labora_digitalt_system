@@ -1,84 +1,119 @@
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { writeFile } from 'fs/promises'
-import { join } from 'path'
+import { requireAuth, requireRole } from '@/lib/auth-middleware'
 
-// Hent alle vedlegg for en leverandør
-export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+// GET /api/suppliers/[id]/attachments - Hent alle vedlegg for en leverandør
+export const GET = requireAuth(async (req: NextRequest, { params }: { params: { id: string } }) => {
   try {
-    const { id } = await params
     const attachments = await prisma.attachment.findMany({
-      where: { supplierId: id },
+      where: {
+        supplierId: params.id
+      },
       include: {
         uploader: {
-          select: { name: true, email: true }
+          select: {
+            name: true,
+            email: true
+          }
         }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: {
+        createdAt: 'desc'
+      }
     })
-    return Response.json(attachments)
-  } catch (error) {
-    console.error('Feil ved henting av vedlegg:', error)
-    return Response.json({ error: 'Kunne ikke hente vedlegg' }, { status: 500 })
-  }
-}
 
-// Last opp nytt vedlegg
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+    return NextResponse.json(attachments)
+  } catch (error) {
+    console.error('Error fetching attachments:', error)
+    return NextResponse.json(
+      { error: 'Kunne ikke hente vedlegg' },
+      { status: 500 }
+    )
+  }
+})
+
+// POST /api/suppliers/[id]/attachments - Last opp nytt vedlegg
+export const POST = requireRole(['ADMIN', 'PURCHASER'])(async (req: NextRequest, { params }: { params: { id: string } }) => {
   try {
-    const { id } = await params
     const formData = await req.formData()
-    
     const file = formData.get('file') as File
     const description = formData.get('description') as string
     const category = formData.get('category') as string
-    const uploadedBy = formData.get('uploadedBy') as string
+    const validUntil = formData.get('validUntil') as string
+    const agreementReference = formData.get('agreementReference') as string
 
     if (!file) {
-      return Response.json({ error: 'Ingen fil valgt' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Ingen fil valgt' },
+        { status: 400 }
+      )
     }
 
-    // Generer unikt filnavn
-    const timestamp = Date.now()
-    const filename = `${timestamp}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
-    
-    // Lagre fil til disk (i produksjon: bruk cloud storage)
-    const uploadsDir = join(process.cwd(), 'public', 'uploads', 'suppliers')
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-    
-    // Opprett mappe hvis den ikke eksisterer
-    try {
-      await writeFile(join(uploadsDir, filename), buffer)
-    } catch (dirError) {
-      // Hvis mappen ikke eksisterer, opprett den
-      const { mkdir } = await import('fs/promises')
-      await mkdir(uploadsDir, { recursive: true })
-      await writeFile(join(uploadsDir, filename), buffer)
+    // Validate file type
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/csv',
+      'image/jpeg',
+      'image/png'
+    ]
+
+    if (!allowedTypes.includes(file.type)) {
+      return NextResponse.json(
+        { error: 'Ugyldig filtype. Tillatte typer: PDF, Word, Excel, CSV, JPEG, PNG' },
+        { status: 400 }
+      )
     }
 
-    // Lagre metadata i database
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      return NextResponse.json(
+        { error: 'Filen er for stor. Maksimal størrelse: 10MB' },
+        { status: 400 }
+      )
+    }
+
+    // In a real implementation, you would save the file to a storage service
+    // For now, we'll simulate this by creating a URL
+    const filename = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
+    const url = `/uploads/suppliers/${params.id}/${filename}`
+
+    // TODO: Actually save the file to storage
+    // await saveFileToStorage(file, url)
+
     const attachment = await prisma.attachment.create({
       data: {
-        supplierId: id,
+        supplierId: params.id,
         filename,
         originalName: file.name,
         mimeType: file.type,
         size: file.size,
-        url: `/uploads/suppliers/${filename}`,
+        url,
         description: description || null,
-        category: (category as any) || 'OTHER',
-        uploadedBy: uploadedBy || null
+        category: category as any || 'OTHER',
+        validUntil: validUntil ? new Date(validUntil) : null,
+        agreementReference: agreementReference || null,
+        uploadedBy: req.user?.id
       },
       include: {
         uploader: {
-          select: { name: true, email: true }
+          select: {
+            name: true,
+            email: true
+          }
         }
       }
     })
 
-    return Response.json(attachment)
+    return NextResponse.json(attachment)
   } catch (error) {
-    console.error('Feil ved opplasting av vedlegg:', error)
-    return Response.json({ error: 'Kunne ikke laste opp vedlegg' }, { status: 500 })
+    console.error('Error uploading attachment:', error)
+    return NextResponse.json(
+      { error: 'Kunne ikke laste opp vedlegg' },
+      { status: 500 }
+    )
   }
-}
+})

@@ -113,7 +113,9 @@ export default function SuppliersPage() {
       const suppliersData = await suppliersRes.json()
       const categoriesData = await categoriesRes.json()
       
-      setSuppliers(Array.isArray(suppliersData) ? suppliersData : [])
+      // Handle new paginated response structure
+      const suppliers = suppliersData.suppliers || suppliersData
+      setSuppliers(Array.isArray(suppliers) ? suppliers : [])
       setCategories(Array.isArray(categoriesData) ? categoriesData : [])
     } catch {
       showToast('error', 'Kunne ikke laste leverandører')

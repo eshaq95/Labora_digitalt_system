@@ -47,6 +47,15 @@ export async function POST(req: Request) {
       }, { status: 401 })
     }
 
+    // Sjekk at JWT_SECRET er satt
+    const jwtSecret = process.env.JWT_SECRET
+    if (!jwtSecret) {
+      console.error('JWT_SECRET er ikke satt i miljøvariabler')
+      return Response.json({ 
+        error: 'Server konfigurasjonsfeil' 
+      }, { status: 500 })
+    }
+
     // Opprett JWT token
     const token = sign(
       { 
@@ -54,7 +63,7 @@ export async function POST(req: Request) {
         email: user.email, 
         role: user.role 
       },
-      process.env.JWT_SECRET || 'labora-secret-key',
+      jwtSecret,
       { expiresIn: '24h' }
     )
 

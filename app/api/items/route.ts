@@ -1,13 +1,46 @@
 import { prisma } from '@/lib/prisma'
+import { requireAuth, requireRole } from '@/lib/auth-middleware'
+import { NextResponse } from 'next/server'
 
-export async function GET() {
+export const GET = requireAuth(async (req) => {
   try {
+    const { searchParams } = new URL(req.url)
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '50')
+    const search = searchParams.get('search') || ''
+    const category = searchParams.get('category') || ''
+    const department = searchParams.get('department') || ''
+    
+    const skip = (page - 1) * limit
+    
+    // Build where clause for filtering
+    const where: any = {}
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { sku: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } }
+      ]
+    }
+    if (category) {
+      where.category = { name: category }
+    }
+    if (department) {
+      where.department = { name: department }
+    }
+    
+    // Get total count for pagination
+    const totalCount = await prisma.item.count({ where })
+    
     const items = await prisma.item.findMany({
+      where,
+      skip,
+      take: limit,
       orderBy: { name: 'asc' },
       include: { 
-        defaultLocation: true,
-        department: true,
-        category: true,
+        defaultLocation: { select: { name: true } },
+        department: { select: { name: true } },
+        category: { select: { name: true } },
         lots: {
           select: {
             quantity: true
@@ -26,14 +59,24 @@ export async function GET() {
       lots: undefined
     }))
     
-    return Response.json(itemsWithStock)
+    return NextResponse.json({
+      items: itemsWithStock,
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+        hasNextPage: page < Math.ceil(totalCount / limit),
+        hasPreviousPage: page > 1
+      }
+    })
   } catch (error) {
     console.error('Feil ved henting av varer:', error)
-    return Response.json({ error: 'Kunne ikke laste varer' }, { status: 500 })
+    return NextResponse.json({ error: 'Kunne ikke laste varer' }, { status: 500 })
   }
-}
+})
 
-export async function POST(req: Request) {
+export const POST = requireRole(['ADMIN', 'PURCHASER'])(async (req) => {
   try {
     const body = await req.json().catch(() => ({}))
     const { 
@@ -47,7 +90,7 @@ export async function POST(req: Request) {
     } = body || {}
     
     if (!sku || !name) {
-      return Response.json({ error: 'SKU og navn er påkrevd' }, { status: 400 })
+      return NextResponse.json({ error: 'SKU og navn er påkrevd' }, { status: 400 })
     }
     
     const item = await prisma.item.create({
@@ -81,10 +124,10 @@ export async function POST(req: Request) {
         category: true
       }
     })
-    return Response.json(item, { status: 201 })
+    return NextResponse.json(item, { status: 201 })
   } catch (error) {
     console.error('Feil ved opprettelse av vare:', error)
-    return Response.json({ error: 'Kunne ikke opprette vare' }, { status: 500 })
+    return NextResponse.json({ error: 'Kunne ikke opprette vare' }, { status: 500 })
   }
-}
+})
 

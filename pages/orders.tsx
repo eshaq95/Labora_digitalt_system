@@ -9,20 +9,12 @@ import { useToast } from '@/components/ui/toast'
 import { OrderForm } from '@/components/forms/order-form'
 import { motion } from 'framer-motion'
 import { Plus, ClipboardList, Package, CheckCircle, Clock, Truck, AlertCircle } from 'lucide-react'
+import { useOrders, useUpdateOrderStatus, type Order } from '@/lib/hooks/useOrders'
+import { useOptimisticStatus } from '@/lib/hooks/useOptimisticUpdates'
+import { useDebouncedSearch } from '@/lib/hooks/useDebounce'
 import { useRouter } from 'next/router'
 
-type Order = { 
-  id: string; 
-  orderNumber: string; 
-  status: 'REQUESTED' | 'APPROVED' | 'ORDERED' | 'PARTIAL' | 'RECEIVED' | 'CANCELLED';
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-  supplier: { name: string } | null;
-  requestedBy?: string | null;
-  requestedDate?: string;
-  expectedDate?: string | null;
-  lines?: { item: { name: string }; quantityOrdered: number; quantityReceived: number }[];
-  createdAt?: string;
-}
+// Order type is now imported from useOrders hook
 
 const orderStatuses = {
   REQUESTED: 'Forespurt',
@@ -60,7 +52,9 @@ export default function OrdersPage() {
     try {
       const res = await fetch('/api/orders', { cache: 'no-store' })
       const data = await res.json()
-      setOrders(Array.isArray(data) ? data : [])
+      // Handle new paginated response structure
+      const orders = data.orders || data
+      setOrders(Array.isArray(orders) ? orders : [])
     } catch {
       showToast('error', 'Kunne ikke laste bestillinger')
     } finally {
@@ -213,7 +207,20 @@ export default function OrdersPage() {
                             )}
                           </TableCell>
                           <TableCell className="text-gray-500 text-sm">
-                            {order.requestedBy || '—'}
+                            <div>
+                              <div className="font-medium text-gray-900 dark:text-gray-100">
+                                {order.requester?.name || 'Ukjent bruker'}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {order.requestedDate ? new Date(order.requestedDate).toLocaleDateString('nb-NO', {
+                                  day: '2-digit',
+                                  month: '2-digit', 
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                }) : '—'}
+                              </div>
+                            </div>
                           </TableCell>
                           <TableCell className="text-gray-500 text-sm">
                             {order.expectedDate ? new Date(order.expectedDate).toLocaleDateString('nb-NO') : '—'}

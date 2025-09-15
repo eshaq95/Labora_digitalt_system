@@ -3,67 +3,57 @@ import { PrismaClient } from '@prisma/client'
 const prisma = new PrismaClient()
 
 async function deleteAllItems() {
-  console.log('🗑️  Starting deletion of all items...')
-  
   try {
-    // First, get count of items to delete
+    console.log('Sletter alle varer og relaterte data...')
+    
+    // Først sjekk antall varer
     const itemCount = await prisma.item.count()
-    console.log(`📊 Found ${itemCount} items to delete`)
+    console.log(`Fant ${itemCount} varer i databasen`)
     
     if (itemCount === 0) {
-      console.log('✅ No items to delete')
+      console.log('Ingen varer å slette')
       return
     }
     
-    // Delete related data first (to avoid foreign key constraints)
-    console.log('🔗 Deleting related data...')
+    // Slett relaterte data først (i riktig rekkefølge)
+    console.log('Sletter relaterte data...')
     
-    // Delete inventory transactions
-    const deletedTransactions = await prisma.inventoryTransaction.deleteMany()
-    console.log(`  - Deleted ${deletedTransactions.count} inventory transactions`)
+    // Slett inventory transactions
+    const transactionResult = await prisma.inventoryTransaction.deleteMany({})
+    console.log(`Slettet ${transactionResult.count} inventory transactions`)
     
-    // Delete inventory lots
-    const deletedLots = await prisma.inventoryLot.deleteMany()
-    console.log(`  - Deleted ${deletedLots.count} inventory lots`)
+    // Slett inventory lots
+    const lotResult = await prisma.inventoryLot.deleteMany({})
+    console.log(`Slettet ${lotResult.count} inventory lots`)
     
-    // Delete supplier items
-    const deletedSupplierItems = await prisma.supplierItem.deleteMany()
-    console.log(`  - Deleted ${deletedSupplierItems.count} supplier items`)
+    // Slett cycle counting lines
+    const cycleCountResult = await prisma.cycleCountingLine.deleteMany({})
+    console.log(`Slettet ${cycleCountResult.count} cycle counting lines`)
     
-    // Delete purchase order lines
-    const deletedOrderLines = await prisma.purchaseOrderLine.deleteMany()
-    console.log(`  - Deleted ${deletedOrderLines.count} purchase order lines`)
+    // Slett purchase order lines
+    const orderLineResult = await prisma.purchaseOrderLine.deleteMany({})
+    console.log(`Slettet ${orderLineResult.count} purchase order lines`)
     
-    // Delete receipt lines
-    const deletedReceiptLines = await prisma.receiptLine.deleteMany()
-    console.log(`  - Deleted ${deletedReceiptLines.count} receipt lines`)
+    // Slett receipt lines
+    const receiptLineResult = await prisma.receiptLine.deleteMany({})
+    console.log(`Slettet ${receiptLineResult.count} receipt lines`)
     
-    // Delete discounts
-    const deletedDiscounts = await prisma.discount.deleteMany()
-    console.log(`  - Deleted ${deletedDiscounts.count} discounts`)
+    // Slett supplier items
+    const supplierItemResult = await prisma.supplierItem.deleteMany({})
+    console.log(`Slettet ${supplierItemResult.count} supplier items`)
     
-    // Delete cycle counting lines
-    const deletedCountingLines = await prisma.cycleCountingLine.deleteMany()
-    console.log(`  - Deleted ${deletedCountingLines.count} cycle counting lines`)
+    // Nå kan vi slette alle varer
+    console.log('Sletter alle varer...')
+    const result = await prisma.item.deleteMany({})
     
-    // Finally, delete all items
-    console.log('📦 Deleting all items...')
-    const deletedItems = await prisma.item.deleteMany()
-    console.log(`✅ Successfully deleted ${deletedItems.count} items`)
-    
-    // Verify deletion
-    const remainingItems = await prisma.item.count()
-    if (remainingItems === 0) {
-      console.log('🎉 All items successfully deleted!')
-    } else {
-      console.log(`⚠️  Warning: ${remainingItems} items still remain`)
-    }
+    console.log(`Slettet ${result.count} varer fra varekartoteket`)
+    console.log('✅ Alle varer og relaterte data er nå slettet!')
     
   } catch (error) {
-    console.error('❌ Error deleting items:', error)
+    console.error('Feil ved sletting av varer:', error)
   } finally {
     await prisma.$disconnect()
   }
 }
 
-deleteAllItems().catch(console.error)
+deleteAllItems()

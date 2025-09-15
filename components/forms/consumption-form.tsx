@@ -67,6 +67,7 @@ export function ConsumptionForm({ lot, open, onClose, onSuccess }: Props) {
       const response = await fetch('/api/inventory/consumption', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           inventoryLotId: lot.id,
           quantity,

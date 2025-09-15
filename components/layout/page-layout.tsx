@@ -7,6 +7,7 @@ type PageLayoutProps = {
   actions?: ReactNode
   children: ReactNode
   className?: string
+  titleClassName?: string
 }
 
 export function PageLayout({ 
@@ -14,15 +15,17 @@ export function PageLayout({
   subtitle, 
   actions, 
   children, 
-  className = '' 
+  className = '',
+  titleClassName
 }: PageLayoutProps) {
   return (
-    <div className={`min-h-screen bg-bg-primary dark:bg-slate-950 py-8 px-6 ${className}`}>
+    <div className={`min-h-screen py-8 px-6 ${className}`}>
       <div className="max-w-7xl mx-auto space-y-6">
         <PageHeader 
           title={title}
           subtitle={subtitle}
           actions={actions}
+          titleClassName={titleClassName}
         />
         {children}
       </div>
@@ -40,7 +43,7 @@ export function DetailPageLayout({
   className = '' 
 }: PageLayoutProps & { backHref?: string }) {
   return (
-    <div className={`min-h-screen bg-bg-primary dark:bg-slate-950 py-8 px-6 ${className}`}>
+    <div className={`min-h-screen py-8 px-6 ${className}`}>
       <div className="max-w-7xl mx-auto space-y-6">
         <PageHeader 
           title={title}

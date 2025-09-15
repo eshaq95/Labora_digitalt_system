@@ -1,16 +1,18 @@
 import { prisma } from '@/lib/prisma'
+import { requireAuth, requireRole } from '@/lib/auth-middleware'
+import { NextResponse } from 'next/server'
 
-export async function GET() {
+export const GET = requireAuth(async (req) => {
   const suppliers = await prisma.supplier.findMany({ 
     orderBy: { name: 'asc' },
     include: {
       category: true
     }
   })
-  return Response.json(suppliers)
-}
+  return NextResponse.json(suppliers)
+})
 
-export async function POST(req: Request) {
+export const POST = requireRole(['ADMIN', 'PURCHASER'])(async (req) => {
   const body = await req.json().catch(() => ({}))
   const { 
     name, 
@@ -25,7 +27,7 @@ export async function POST(req: Request) {
   } = body || {}
   
   if (typeof name !== 'string' || !name.trim()) {
-    return Response.json({ error: 'Leverandørnavn er påkrevd' }, { status: 400 })
+    return NextResponse.json({ error: 'Leverandørnavn er påkrevd' }, { status: 400 })
   }
   
   const supplier = await prisma.supplier.create({
@@ -58,6 +60,6 @@ export async function POST(req: Request) {
       category: true
     }
   })
-  return Response.json(supplier, { status: 201 })
-}
+  return NextResponse.json(supplier, { status: 201 })
+})
 

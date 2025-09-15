@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
+import { parseGS1Code, extractGTIN, isSSCCCode, formatGS1Data } from '@/lib/gs1-parser';
 
 const ScanRequestSchema = z.object({
   scannedCode: z.string().min(1, 'Skannet kode kan ikke være tom')
 });
 
 export type ScanResult = {
-  type: 'LOT' | 'ITEM' | 'LOCATION' | 'UNKNOWN';
+  type: 'LOT' | 'ITEM' | 'LOCATION' | 'UNKNOWN' | 'SSCC_ERROR';
   data?: any;
   message?: string;
+  gs1Data?: any; // GS1 parsed data hvis relevant
 };
 
 /**
@@ -24,6 +26,19 @@ export type ScanResult = {
 async function resolveScannedCode(scannedString: string): Promise<ScanResult> {
   try {
     console.log('🔍 Resolving scanned code:', scannedString);
+    
+    // 0. Parse GS1-kode hvis relevant
+    const gs1Data = parseGS1Code(scannedString);
+    console.log('📊 GS1 Parse result:', gs1Data);
+    
+    // 0.1. Sjekk for SSCC-koder (logistikk) - disse skal ikke brukes for vareidentifikasjon
+    if (isSSCCCode(scannedString)) {
+      return {
+        type: 'SSCC_ERROR',
+        gs1Data,
+        message: `Dette er en Kolli-kode (SSCC: ${gs1Data.sscc}). Vennligst skann koden på selve produktet, ikke transportetiketten.`
+      };
+    }
     
     // 1. Sjekk om det er en unik ID for et parti (mest spesifikt først)
     // Dette er typisk QR-koder vi har generert ved mottak
@@ -50,13 +65,18 @@ async function resolveScannedCode(scannedString: string): Promise<ScanResult> {
     }
 
     // 2. Sjekk om det er en Vare (SKU eller leverandør-strekkode)
-    // Dette dekker både interne SKU-er og leverandørens 1D strekkoder
+    // For GS1-koder: bruk kun GTIN-delen for oppslag
+    // For vanlige koder: bruk hele strengen
     console.log('🏷️ Checking for item...');
-    const item = await prisma.item.findFirst({
+    const searchCode = gs1Data.isGS1 && gs1Data.gtin ? gs1Data.gtin : scannedString;
+    console.log('🔍 Using search code:', searchCode);
+    
+    // First try direct item lookup (legacy barcode field and SKU)
+    let item = await prisma.item.findFirst({
       where: {
         OR: [
-          { barcode: scannedString },
-          { sku: scannedString }
+          { barcode: searchCode },
+          { sku: searchCode }
         ]
       },
       include: {
@@ -82,12 +102,71 @@ async function resolveScannedCode(scannedString: string): Promise<ScanResult> {
       }
     });
 
+    // If not found, try ItemBarcode table
+    if (!item) {
+      console.log('🔍 Searching in ItemBarcode table...');
+      const itemBarcode = await prisma.itemBarcode.findUnique({
+        where: { barcode: searchCode },
+        include: {
+          item: {
+            include: {
+              category: true,
+              department: true,
+              supplierItems: {
+                include: {
+                  supplier: true
+                }
+              },
+              lots: {
+                where: {
+                  quantity: { gt: 0 }
+                },
+                include: {
+                  location: true
+                },
+                orderBy: [
+                  { expiryDate: 'asc' },
+                  { createdAt: 'asc' }
+                ]
+              }
+            }
+          }
+        }
+      });
+      
+      if (itemBarcode) {
+        item = itemBarcode.item;
+        console.log('✅ Found item via ItemBarcode:', item.name);
+      }
+    }
+
     if (item) {
       console.log('✅ Found item:', item.name);
+      
+      // Hvis dette er en GS1-kode med batch-info, prøv å finne spesifikk lot
+      let specificLot = null;
+      if (gs1Data.isGS1 && gs1Data.lotNumber) {
+        console.log('🔍 Looking for specific lot:', gs1Data.lotNumber);
+        specificLot = await prisma.inventoryLot.findFirst({
+          where: {
+            itemId: item.id,
+            lotNumber: gs1Data.lotNumber,
+            quantity: { gt: 0 }
+          },
+          include: {
+            location: true
+          }
+        });
+      }
+      
       return {
         type: 'ITEM',
         data: item,
-        message: `Vare funnet: ${item.name} (${item.sku})`
+        gs1Data: gs1Data.isGS1 ? gs1Data : undefined,
+        specificLot,
+        message: gs1Data.isGS1 
+          ? `Vare funnet via GS1: ${item.name} ${gs1Data.lotNumber ? `(Lot: ${gs1Data.lotNumber})` : ''}`
+          : `Vare funnet: ${item.name} (${item.sku})`
       };
     }
     console.log('❌ No item found');

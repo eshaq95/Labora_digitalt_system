@@ -11,10 +11,15 @@ import dynamic from 'next/dynamic'
 // Code splitting for heavy form component
 const ReceiptForm = dynamic(() => import('@/components/forms/receipt-form').then(mod => ({ default: mod.ReceiptForm })), {
   loading: () => (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-        <p className="mt-4 text-gray-600">Laster skjema...</p>
+    <div className="fixed inset-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-slate-800 rounded-xl p-8 shadow-xl border border-gray-200 dark:border-slate-700">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div className="text-center">
+            <p className="text-gray-900 dark:text-white font-medium">Laster skjema...</p>
+            <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">Vennligst vent mens vi laster inn mottaksskjemaet</p>
+          </div>
+        </div>
       </div>
     </div>
   ),
@@ -61,7 +66,9 @@ export default function ReceiptsPage() {
     try {
       const res = await fetch('/api/receipts', { cache: 'no-store' })
       const data = await res.json()
-      setReceipts(Array.isArray(data) ? data : [])
+      // Handle new paginated response structure
+      const receipts = data.receipts || data
+      setReceipts(Array.isArray(receipts) ? receipts : [])
     } catch {
       showToast('error', 'Kunne ikke laste mottak')
     } finally {

@@ -1,5 +1,6 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requireAuth, requireRole } from '@/lib/auth-middleware'
 import * as XLSX from 'xlsx'
 
 // Category mapping based on item names and keywords
@@ -85,13 +86,13 @@ function generateSKU(itemName: string, category: string, index: number): string 
   return `${categoryPrefix}-${nameWords}-${indexSuffix}`
 }
 
-export async function POST(req: NextRequest) {
+export const POST = requireRole(['ADMIN', 'PURCHASER'])(async (req) => {
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File
     
     if (!file) {
-      return Response.json({ error: 'No file provided' }, { status: 400 })
+      return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
     // Read file buffer
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
     const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
     
     if (data.length < 2) {
-      return Response.json({ error: 'Excel file must have at least a header row and one data row' }, { status: 400 })
+      return NextResponse.json({ error: 'Excel file must have at least a header row and one data row' }, { status: 400 })
     }
 
     const results = {
@@ -285,7 +286,7 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    return Response.json({
+    return NextResponse.json({
       success: true,
       message: `Import completed: ${results.items} items, ${results.suppliers} suppliers, ${results.locations} locations`,
       results
@@ -293,9 +294,9 @@ export async function POST(req: NextRequest) {
 
   } catch (error) {
     console.error('Excel import error:', error)
-    return Response.json(
+    return NextResponse.json(
       { error: 'Failed to import Excel file', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }
-}
+})

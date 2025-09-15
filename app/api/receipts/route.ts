@@ -1,7 +1,9 @@
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { requireAuth, requireRole } from '@/lib/auth-middleware'
+import { NextResponse } from 'next/server'
 
-export async function GET() {
+export const GET = requireAuth(async (req) => {
   const receipts = await prisma.receipt.findMany({
     orderBy: { receivedAt: 'desc' },
     include: { 
@@ -10,8 +12,8 @@ export async function GET() {
       supplier: true
     },
   })
-  return Response.json(receipts)
-}
+  return NextResponse.json(receipts)
+})
 
 // Validation schema for receipt registration
 const receiptLineSchema = z.object({
@@ -33,7 +35,7 @@ const receiptSchema = z.object({
 })
 
 // Creates a receipt and updates inventory lots accordingly
-export async function POST(req: Request) {
+export const POST = requireRole(['ADMIN', 'PURCHASER', 'LAB_USER'])(async (req) => {
   try {
     const body = await req.json().catch(() => ({}))
     
@@ -100,20 +102,20 @@ export async function POST(req: Request) {
 
     return receipt
   })
-  return Response.json(result, { status: 201 })
+    return NextResponse.json(result, { status: 201 })
   
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return Response.json({ 
+      return NextResponse.json({ 
         error: 'Valideringsfeil', 
         details: error.issues 
       }, { status: 400 })
     }
     
     console.error('Feil ved registrering av varemottak:', error)
-    return Response.json({ 
+    return NextResponse.json({ 
       error: 'Intern serverfeil: Kunne ikke registrere varemottak' 
     }, { status: 500 })
   }
-}
+})
 

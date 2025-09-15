@@ -1,23 +1,33 @@
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { requireAuth, AuthenticatedRequest } from '@/lib/auth-middleware'
+import { NextResponse } from 'next/server'
 
-// Schema for vareuttak/forbruk
+
+// Schema for vareuttak/forbruk - updated to match frontend parameters
 const consumptionSchema = z.object({
-  inventoryLotId: z.string(),
-  quantity: z.number().positive(),
-  reasonCode: z.string().optional(),
-  notes: z.string().optional(),
-  userId: z.string() // I en ekte app ville dette komme fra session
+  lotId: z.string().min(1, 'Lot ID er påkrevd'),
+  quantity: z.number().positive('Antall må være positivt'),
+  reason: z.string().optional(),
+  notes: z.string().optional()
 })
 
-export async function POST(req: Request) {
+export const POST = requireAuth(async (req: AuthenticatedRequest) => {
   try {
     const body = await req.json()
-    const { inventoryLotId, quantity, reasonCode, notes, userId } = consumptionSchema.parse(body)
+    const { lotId, quantity, reason, notes } = consumptionSchema.parse(body)
+    
+    // Get user from auth middleware
+    const userId = req.user?.userId
+    if (!userId) {
+      return NextResponse.json({ error: 'Bruker ikke autentiseret' }, { status: 401 })
+    }
 
+
+    
     // Hent inventory lot og sjekk tilgjengelighet
     const lot = await prisma.inventoryLot.findUnique({
-      where: { id: inventoryLotId },
+      where: { id: lotId },
       include: {
         item: { select: { name: true, unit: true } },
         location: { select: { name: true } }
@@ -25,29 +35,20 @@ export async function POST(req: Request) {
     })
 
     if (!lot) {
-      return Response.json({ error: 'Inventory lot ikke funnet' }, { status: 404 })
+      return NextResponse.json({ error: 'Inventory lot ikke funnet' }, { status: 404 })
     }
 
     if (lot.quantity < quantity) {
-      return Response.json({ 
+      return NextResponse.json({ 
         error: `Ikke nok på lager. Tilgjengelig: ${lot.quantity}, forespurt: ${quantity}` 
       }, { status: 400 })
-    }
-
-    // Sjekk at bruker eksisterer
-    const user = await prisma.user.findUnique({
-      where: { id: userId }
-    })
-
-    if (!user) {
-      return Response.json({ error: 'Ugyldig bruker' }, { status: 400 })
     }
 
     // Utfør transaksjonen atomisk
     const result = await prisma.$transaction(async (tx) => {
       // Oppdater inventory lot
       const updatedLot = await tx.inventoryLot.update({
-        where: { id: inventoryLotId },
+        where: { id: lotId },
         data: { quantity: lot.quantity - quantity }
       })
 
@@ -55,12 +56,12 @@ export async function POST(req: Request) {
       const transaction = await tx.inventoryTransaction.create({
         data: {
           type: 'CONSUMPTION',
-          inventoryLotId,
+          inventoryLotId: lotId,
           quantityChange: -quantity, // Negativt for uttak
           quantityBefore: lot.quantity,
           quantityAfter: lot.quantity - quantity,
-          reasonCode: reasonCode || 'CONSUMPTION',
-          notes,
+          reasonCode: reason || 'CONSUMPTION',
+          notes: notes || 'Hurtiguttak via skanning',
           userId
         },
         include: {
@@ -77,32 +78,35 @@ export async function POST(req: Request) {
       return { updatedLot, transaction }
     })
 
-    console.log(`✅ Vareuttak registrert: ${quantity} ${lot.item.unit.toLowerCase()} av ${lot.item.name} (${user.name})`)
+    console.log(`✅ Vareuttak registrert: ${quantity} ${lot.item.unit.toLowerCase()} av ${lot.item.name} (${req.user?.email || 'Ukjent bruker'})`)
 
-    return Response.json({
+    return NextResponse.json({
       message: 'Vareuttak registrert',
       transaction: result.transaction,
       newQuantity: result.updatedLot.quantity
     })
 
   } catch (error: any) {
-    console.error('Feil ved vareuttak:', error)
+    console.error('❌ Feil ved vareuttak:', error)
+    console.error('Error stack:', error.stack)
     
     if (error instanceof z.ZodError) {
-      return Response.json({ 
+      console.error('Zod validation error:', error.issues)
+      return NextResponse.json({ 
         error: 'Ugyldig input', 
         details: error.issues 
       }, { status: 400 })
     }
 
-    return Response.json({ 
-      error: 'Kunne ikke registrere vareuttak' 
+    return NextResponse.json({ 
+      error: 'Kunne ikke registrere vareuttak',
+      details: error.message 
     }, { status: 500 })
   }
-}
+})
 
 // Hent forbrukshistorikk
-export async function GET(req: Request) {
+export const GET = requireAuth(async (req: AuthenticatedRequest) => {
   try {
     const { searchParams } = new URL(req.url)
     const itemId = searchParams.get('itemId')
@@ -136,12 +140,12 @@ export async function GET(req: Request) {
       take: limit
     })
 
-    return Response.json(transactions)
+    return NextResponse.json(transactions)
 
   } catch (error) {
     console.error('Feil ved henting av forbrukshistorikk:', error)
-    return Response.json({ 
+    return NextResponse.json({ 
       error: 'Kunne ikke hente forbrukshistorikk' 
     }, { status: 500 })
   }
-}
+})

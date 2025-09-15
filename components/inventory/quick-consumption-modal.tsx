@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
 import { ScanResult } from '@/app/api/scan-lookup/route';
+import { parseGS1Code } from '@/lib/gs1-parser';
 import { 
   Package, 
   MapPin, 
@@ -15,7 +16,8 @@ import {
   Clock,
   User,
   Loader2,
-  ArrowRight
+  ArrowRight,
+  Zap
 } from 'lucide-react';
 
 interface QuickConsumptionModalProps {
@@ -68,13 +70,34 @@ export function QuickConsumptionModal({
       setReason('ANALYSIS');
       setNotes('');
       
-      // Auto-select lot based on scan result type
+      // Auto-select lot based on scan result type and GS1 data
       if (scanResult.type === 'LOT') {
         // Specific lot was scanned - use it directly
         setSelectedLot(scanResult.data);
       } else if (scanResult.type === 'ITEM' && scanResult.data.lots?.length > 0) {
-        // Item was scanned - auto-select FEFO lot (first in sorted array)
-        setSelectedLot(scanResult.data.lots[0]);
+        // Check if we have GS1 data with specific lot number
+        const gs1Data = scanResult.gs1Data;
+        let selectedLot = null;
+        
+        if (gs1Data?.isGS1 && gs1Data.lotNumber) {
+          // Try to find the specific lot from GS1 data
+          selectedLot = scanResult.data.lots.find((lot: InventoryLot) => 
+            lot.lotNumber === gs1Data.lotNumber && lot.quantity > 0
+          );
+          
+          if (selectedLot) {
+            console.log(`🎯 GS1 batch-specific selection: ${gs1Data.lotNumber}`);
+            setNotes(`GS1-skanning: ${gs1Data.lotNumber}`);
+          }
+        }
+        
+        // Fallback to FEFO if no specific lot found
+        if (!selectedLot) {
+          selectedLot = scanResult.data.lots[0]; // FEFO: First in sorted array
+          console.log('📦 FEFO fallback selection');
+        }
+        
+        setSelectedLot(selectedLot);
       } else {
         setSelectedLot(null);
       }
@@ -102,6 +125,7 @@ export function QuickConsumptionModal({
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // Include cookies for authentication
         body: JSON.stringify({
           lotId: selectedLot.id,
           quantity: quantity,
@@ -112,7 +136,10 @@ export function QuickConsumptionModal({
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || 'Feil ved registrering av uttak');
+        console.error('API Error Response:', error);
+        console.error('Response status:', response.status);
+        console.error('Response statusText:', response.statusText);
+        throw new Error(error.error || error.message || 'Feil ved registrering av uttak');
       }
 
       const result = await response.json();
@@ -214,8 +241,15 @@ export function QuickConsumptionModal({
                           <MapPin className="h-4 w-4 text-gray-500" />
                           <span className="text-sm font-medium">{lot.location.name}</span>
                           {lot.lotNumber && (
-                            <span className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">
+                            <span className={`text-xs px-2 py-1 rounded font-mono ${
+                              scanResult?.gs1Data?.isGS1 && scanResult.gs1Data.lotNumber === lot.lotNumber
+                                ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                : 'bg-gray-100'
+                            }`}>
                               {lot.lotNumber}
+                              {scanResult?.gs1Data?.isGS1 && scanResult.gs1Data.lotNumber === lot.lotNumber && (
+                                <Zap className="inline w-3 h-3 ml-1" />
+                              )}
                             </span>
                           )}
                         </div>
@@ -252,9 +286,17 @@ export function QuickConsumptionModal({
         {/* Selected Lot Info (for single lot or LOT scan) */}
         {selectedLot && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <div className="flex items-center space-x-2 mb-2">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <span className="text-sm font-medium text-green-800">Valgt parti</span>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center space-x-2">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <span className="text-sm font-medium text-green-800">Valgt parti</span>
+              </div>
+              {scanResult?.gs1Data?.isGS1 && scanResult.gs1Data.lotNumber === selectedLot.lotNumber && (
+                <div className="flex items-center space-x-1 text-blue-600">
+                  <Zap className="h-3 w-3" />
+                  <span className="text-xs font-medium">GS1-match</span>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>

@@ -5,8 +5,9 @@ import { Modal } from '@/components/ui/modal'
 import { Card, CardContent } from '@/components/ui/card'
 import { useToast } from '@/components/ui/toast'
 import { BarcodeScanner } from '@/components/ui/barcode-scanner'
-import { Plus, Trash2, Package, AlertTriangle, Calendar, Hash, Split, Scan } from 'lucide-react'
+import { Plus, Trash2, Package, AlertTriangle, Calendar, Hash, Split, Scan, Zap } from 'lucide-react'
 import { ScanResult } from '@/app/api/scan-lookup/route'
+import { parseGS1Code, formatGS1Data } from '@/lib/gs1-parser'
 
 type ReceiptLine = {
   itemId: string
@@ -70,10 +71,10 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
   // Load reference data
   useEffect(() => {
     Promise.all([
-      fetch('/api/items').then(r => r.json()),
+      fetch('/api/items?limit=1000').then(r => r.json()),
       fetch('/api/locations').then(r => r.json())
-    ]).then(([itms, locs]) => {
-      setItems(itms)
+    ]).then(([itemsResponse, locs]) => {
+      setItems(itemsResponse.items || itemsResponse)
       setLocations(locs)
     }).catch(() => {
       showToast('error', 'Kunne ikke laste referansedata')
@@ -176,17 +177,30 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
     if (result.type === 'ITEM') {
       const item = result.data;
       
+      // Extract GS1 data if available
+      const gs1Data = result.gs1Data;
+      const autoLot = gs1Data?.lotNumber || '';
+      const autoExpiry = gs1Data?.expiryDate ? gs1Data.expiryDate.toISOString().split('T')[0] : '';
+      
       if (currentLineIndex !== null) {
         // Update existing line
         updateLine(currentLineIndex, 'itemId', item.id);
+        
+        // Auto-fill GS1 data if available
+        if (autoLot) {
+          updateLine(currentLineIndex, 'lotNumber', autoLot);
+        }
+        if (autoExpiry) {
+          updateLine(currentLineIndex, 'expiryDate', autoExpiry);
+        }
       } else {
-        // Add new line with scanned item
+        // Add new line with scanned item and GS1 data
         const newLine: ReceiptLine = {
           itemId: item.id,
           locationId: item.defaultLocationId || '',
           quantity: 1,
-          lotNumber: '',
-          expiryDate: ''
+          lotNumber: autoLot,
+          expiryDate: autoExpiry
         };
         
         setFormData(prev => ({
@@ -195,7 +209,17 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
         }));
       }
       
-      showToast('success', `Vare lagt til: ${item.name}`);
+      // Show success message with GS1 info
+      let message = `Vare lagt til: ${item.name}`;
+      if (gs1Data?.isGS1) {
+        const gs1Info = [];
+        if (autoLot) gs1Info.push(`Lot: ${autoLot}`);
+        if (autoExpiry) gs1Info.push(`Utløper: ${new Date(autoExpiry).toLocaleDateString('nb-NO')}`);
+        if (gs1Info.length > 0) {
+          message += ` (${gs1Info.join(', ')})`;
+        }
+      }
+      showToast('success', message);
       setCurrentLineIndex(null);
     } else if (result.type === 'LOCATION') {
       if (currentLineIndex !== null) {
@@ -203,6 +227,8 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
         showToast('success', `Lokasjon valgt: ${result.data.name}`);
         setCurrentLineIndex(null);
       }
+    } else if (result.type === 'SSCC_ERROR') {
+      showToast('error', result.message || 'Dette er en logistikk-kode. Skann produktkoden i stedet.');
     } else {
       showToast('error', result.message || 'Ukjent kode');
     }
@@ -252,6 +278,7 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
       const response = await fetch('/api/receipts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           orderId: formData.orderId || null,
           receivedBy: formData.receivedBy,
@@ -268,8 +295,14 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Ukjent feil')
+        let errorMessage = 'Ukjent feil'
+        try {
+          const error = await response.json()
+          errorMessage = error.error || error.message || 'Ukjent feil'
+        } catch {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`
+        }
+        throw new Error(errorMessage)
       }
 
       showToast('success', 'Varemottak registrert og lagerbeholdning oppdatert')
@@ -407,6 +440,18 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
                               <label className="block text-xs font-medium mb-1">
                                 <Hash className="w-3 h-3 inline mr-1" />
                                 Lot/Batch nummer <span className="text-red-500">*</span>
+                                {line.lotNumber && (() => {
+                                  // Check if this lot number might be from GS1
+                                  const hasGS1Data = formData.lines.some(l => 
+                                    l.itemId === line.itemId && l.lotNumber === line.lotNumber
+                                  );
+                                  return hasGS1Data ? (
+                                    <span className="ml-2 inline-flex items-center gap-1 text-green-600">
+                                      <Zap className="w-3 h-3" />
+                                      <span className="text-xs">GS1</span>
+                                    </span>
+                                  ) : null;
+                                })()}
                               </label>
                               <Input
                                 className="text-sm"
@@ -422,6 +467,18 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
                               <label className="block text-xs font-medium mb-1">
                                 <Calendar className="w-3 h-3 inline mr-1" />
                                 Utløpsdato <span className="text-red-500">*</span>
+                                {line.expiryDate && (() => {
+                                  // Check if this expiry date might be from GS1
+                                  const hasGS1Data = formData.lines.some(l => 
+                                    l.itemId === line.itemId && l.expiryDate === line.expiryDate
+                                  );
+                                  return hasGS1Data ? (
+                                    <span className="ml-2 inline-flex items-center gap-1 text-green-600">
+                                      <Zap className="w-3 h-3" />
+                                      <span className="text-xs">GS1</span>
+                                    </span>
+                                  ) : null;
+                                })()}
                               </label>
                               <Input
                                 type="date"

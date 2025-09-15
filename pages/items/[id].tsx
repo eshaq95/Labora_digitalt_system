@@ -8,12 +8,26 @@ import dynamic from 'next/dynamic'
 
 // Code splitting for forms - only load when needed
 const SupplierItemForm = dynamic(() => import('@/components/forms/supplier-item-form').then(mod => ({ default: mod.SupplierItemForm })), {
-  loading: () => <div className="flex items-center justify-center p-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>,
+  loading: () => (
+    <div className="flex items-center justify-center p-8">
+      <div className="flex flex-col items-center gap-3">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <p className="text-gray-600 dark:text-gray-400 text-sm">Laster skjema...</p>
+      </div>
+    </div>
+  ),
   ssr: false
 })
 
 const ConsumptionForm = dynamic(() => import('@/components/forms/consumption-form').then(mod => ({ default: mod.ConsumptionForm })), {
-  loading: () => <div className="flex items-center justify-center p-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>,
+  loading: () => (
+    <div className="flex items-center justify-center p-8">
+      <div className="flex flex-col items-center gap-3">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <p className="text-gray-600 dark:text-gray-400 text-sm">Laster skjema...</p>
+      </div>
+    </div>
+  ),
   ssr: false
 })
 import { motion } from 'framer-motion'
@@ -341,7 +355,7 @@ export default function ItemDetailPage() {
 
         {/* Tab Navigation */}
         <div className="mb-6">
-          <div className="border-b border-border">
+          <div className="border-b border-gray-200/60 dark:border-slate-700/60">
             <nav className="flex space-x-8">
               {[
                 { key: 'details', label: 'Varedetaljer', icon: Package },
@@ -352,10 +366,10 @@ export default function ItemDetailPage() {
                 <button
                   key={key}
                   onClick={() => handleTabChange(key as any)}
-                  className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-all duration-300 ${
                     activeTab === key
-                      ? 'border-labora text-labora'
-                      : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border-hover'
+                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
                   }`}
                 >
                   <Icon className="w-4 h-4" />

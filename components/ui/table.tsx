@@ -18,7 +18,7 @@ export function TableHeader({
 }: React.HTMLAttributes<HTMLTableSectionElement>) {
   return (
     <thead
-      className={cn('bg-gradient-to-r from-bg-secondary to-bg-tertiary border-b border-border', className)}
+      className={cn('bg-gray-50 dark:bg-slate-800/50 border-b border-gray-200 dark:border-slate-700/50', className)}
       {...props}
     />
   )
@@ -31,7 +31,7 @@ export function TableRow({
   return (
     <tr 
       className={cn(
-        'border-b border-border/50 hover:bg-surface-hover transition-all duration-200 hover:shadow-sm', 
+        'border-b border-gray-100 dark:border-slate-800/30 hover:bg-gray-50/50 dark:hover:bg-slate-800/30 transition-all duration-200', 
         className
       )} 
       {...props} 
@@ -46,7 +46,7 @@ export function TableHead({
   return (
     <th 
       className={cn(
-        'py-4 px-6 text-left font-semibold text-text-secondary text-xs uppercase tracking-wider', 
+        'py-4 px-6 text-left font-semibold text-gray-600 dark:text-gray-300 text-xs uppercase tracking-wider', 
         className
       )} 
       {...props} 
@@ -60,7 +60,7 @@ export function TableBody({
 }: React.HTMLAttributes<HTMLTableSectionElement>) {
   return (
     <tbody 
-      className={cn('divide-y divide-border/30', className)} 
+      className={cn('divide-y divide-gray-100 dark:divide-slate-800/30', className)} 
       {...props} 
     />
   )
@@ -73,7 +73,7 @@ export function TableCell({
   return (
     <td 
       className={cn(
-        'py-4 px-6 text-text-primary font-medium', 
+        'py-4 px-6 text-gray-900 dark:text-gray-100 font-medium', 
         className
       )} 
       {...props} 

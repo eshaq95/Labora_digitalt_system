@@ -13,11 +13,17 @@ export async function GET() {
       }, { status: 401 })
     }
 
+    // Sjekk at JWT_SECRET er satt
+    const jwtSecret = process.env.JWT_SECRET
+    if (!jwtSecret) {
+      console.error('JWT_SECRET er ikke satt i miljøvariabler')
+      return Response.json({ 
+        error: 'Server konfigurasjonsfeil' 
+      }, { status: 500 })
+    }
+
     // Verifiser JWT token
-    const decoded = verify(
-      token.value, 
-      process.env.JWT_SECRET || 'labora-secret-key'
-    ) as any
+    const decoded = verify(token.value, jwtSecret) as any
 
     if (!decoded.userId) {
       return Response.json({ 

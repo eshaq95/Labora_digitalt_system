@@ -35,8 +35,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
 
       if (response.ok) {
-        const data = await response.json()
-        setUser(data.user)
+        // Sjekk om responsen er JSON
+        const contentType = response.headers.get('content-type')
+        if (contentType && contentType.includes('application/json')) {
+          const data = await response.json()
+          setUser(data.user)
+        } else {
+          console.error('Uventet respons fra /api/auth/me')
+          setUser(null)
+        }
       } else {
         setUser(null)
       }
@@ -49,20 +56,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const login = async (email: string, password: string) => {
-    const response = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-      credentials: 'include'
-    })
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+        credentials: 'include'
+      })
 
-    const data = await response.json()
+      // Sjekk om responsen er JSON
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text()
+        console.error('Uventet respons fra server:', text)
+        throw new Error('Server returnerte ugyldig respons')
+      }
 
-    if (!response.ok) {
-      throw new Error(data.error || 'Innlogging feilet')
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Innlogging feilet')
+      }
+
+      setUser(data.user)
+    } catch (error) {
+      console.error('Feil ved innlogging:', error)
+      throw error
     }
-
-    setUser(data.user)
   }
 
   const logout = async () => {

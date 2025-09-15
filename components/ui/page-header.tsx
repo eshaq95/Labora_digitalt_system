@@ -8,6 +8,7 @@ type Props = {
   actions?: ReactNode;
   showBackButton?: boolean;
   backHref?: string;
+  titleClassName?: string;
 }
 
 export function PageHeader({ 
@@ -15,7 +16,8 @@ export function PageHeader({
   subtitle, 
   actions, 
   showBackButton = false, 
-  backHref = '/' 
+  backHref = '/',
+  titleClassName
 }: Props) {
   return (
     <div className="flex items-start justify-between gap-4 mb-6">
@@ -29,11 +31,11 @@ export function PageHeader({
           </Link>
         )}
         <div>
-          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-text-primary">
+          <h2 className={titleClassName || "text-2xl font-semibold text-slate-900 dark:text-slate-100"}>
             {title}
           </h2>
           {subtitle && (
-            <p className="text-text-secondary text-sm mt-1">{subtitle}</p>
+            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">{subtitle}</p>
           )}
         </div>
       </div>
