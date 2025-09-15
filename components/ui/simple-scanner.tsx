@@ -62,7 +62,7 @@ export function SimpleScanner({
           cameraId,
           {
             fps: 15, // Higher FPS for better scanning with zoom
-            qrbox: { width: 180, height: 180 }, // Much smaller scanning area for maximum zoom
+            qrbox: { width: 350, height: 350 }, // Larger scanning area like first picture
             aspectRatio: 1.0,
             // Request higher resolution for better zoom (no mandatory minimums)
             width: { ideal: 1280 },
@@ -177,7 +177,7 @@ export function SimpleScanner({
   };
 
   return (
-    <Modal open={isOpen} onClose={handleClose} title={title}>
+    <Modal open={isOpen} onClose={handleClose} title={title} size="xl">
       <div className="space-y-4">
         <p className="text-sm text-gray-600">{description}</p>
 
@@ -224,7 +224,7 @@ export function SimpleScanner({
         {scanMode === 'camera' && cameraPermission === 'granted' && (
           <div className="space-y-4">
             <div className="bg-black rounded-lg overflow-hidden">
-              <div id={scannerElementId} className="w-full h-64"></div>
+              <div id={scannerElementId} className="w-full h-96"></div>
             </div>
             <p className="text-xs text-gray-500 text-center">
               Position the QR code within the scanning area

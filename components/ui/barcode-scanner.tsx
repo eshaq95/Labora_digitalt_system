@@ -76,13 +76,13 @@ export function BarcodeScanner({
       {
         fps: 15, // Higher FPS for better scanning with zoom
         qrbox: function(viewfinderWidth, viewfinderHeight) {
-          // Much smaller qrbox for maximum zoom effect
-          const minEdgePercentage = 0.3; // 30% of the smaller dimension for maximum zoom
+          // Larger qrbox for better camera view like first picture
+          const minEdgePercentage = 0.7; // 70% of the smaller dimension for larger view
           const minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
           const qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
           return {
-            width: Math.max(qrboxSize, 150), // Minimum 150px for very focused scanning
-            height: Math.max(qrboxSize, 150),
+            width: Math.max(qrboxSize, 300), // Minimum 300px for larger scanning area
+            height: Math.max(qrboxSize, 300),
           };
         },
         supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
@@ -227,7 +227,7 @@ export function BarcodeScanner({
   };
 
   return (
-    <Modal open={isOpen} onClose={handleClose} title={title}>
+    <Modal open={isOpen} onClose={handleClose} title={title} size="xl">
       <div className="space-y-4">
         <p className="text-sm text-gray-600">{description}</p>
 
@@ -276,7 +276,7 @@ export function BarcodeScanner({
             <div 
               id={scannerElementId} 
               className="w-full"
-              style={{ minHeight: '300px' }}
+              style={{ minHeight: '450px' }}
             />
             <p className="text-xs text-gray-500 text-center">
               Støtter både QR-koder og tradisjonelle strekkoder (EAN, Code 128, etc.)
