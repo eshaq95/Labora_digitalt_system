@@ -398,7 +398,7 @@ export default function InventoryPage() {
                   {/* Page Numbers */}
                   {(() => {
                     const { page, totalPages } = pagination
-                    const pages = []
+                    const pages: (number | string)[] = []
                     
                     // Always show first page
                     if (totalPages > 1) pages.push(1)
