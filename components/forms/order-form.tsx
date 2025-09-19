@@ -25,8 +25,8 @@ function isPriceExpiringSoon(validUntil?: string | null): boolean {
 type OrderLine = {
   itemId: string
   item?: { name: string; unit: string; supplier?: { name: string } }
-  quantityOrdered: number
-  unitPrice?: number
+  quantityOrdered: number | ''
+  unitPrice?: number | undefined
   departmentId?: string
   department?: { name: string }
   notes?: string
@@ -100,7 +100,8 @@ export function OrderForm({ isOpen, onClose, onSave, suggestedItem }: OrderFormP
   // Calculate order total
   const orderTotal = formData.lines.reduce((sum, line) => {
     const price = line.unitPrice || line.supplierItem?.negotiatedPrice || 0
-    return sum + (price * line.quantityOrdered)
+    const qty = typeof line.quantityOrdered === 'number' ? line.quantityOrdered : 0
+    return sum + (price * qty)
   }, 0)
 
   // Get all discount codes and instructions for selected supplier
@@ -116,10 +117,15 @@ export function OrderForm({ isOpen, onClose, onSave, suggestedItem }: OrderFormP
       fetch('/api/suppliers').then(r => r.json()),
       fetch('/api/departments').then(r => r.json())
     ]).then(([supps, depts]) => {
-      setSuppliers(supps)
-      setDepartments(depts)
-    }).catch(() => {
+      // Ensure suppliers is always an array
+      setSuppliers(Array.isArray(supps) ? supps : [])
+      setDepartments(Array.isArray(depts) ? depts : [])
+    }).catch((error) => {
+      console.error('Error loading reference data:', error)
       showToast('error', 'Kunne ikke laste referansedata')
+      // Set empty arrays as fallback
+      setSuppliers([])
+      setDepartments([])
     })
   }, [])
 
@@ -176,7 +182,7 @@ export function OrderForm({ isOpen, onClose, onSave, suggestedItem }: OrderFormP
 
   // Update selected supplier when supplierId changes
   useEffect(() => {
-    if (formData.supplierId) {
+    if (formData.supplierId && Array.isArray(suppliers)) {
       const supplier = suppliers.find(s => s.id === formData.supplierId)
       setSelectedSupplier(supplier || null)
     } else {
@@ -190,7 +196,7 @@ export function OrderForm({ isOpen, onClose, onSave, suggestedItem }: OrderFormP
       const item = items.find(i => i.id === suggestedItem.id)
       if (item) {
         // Auto-select supplier if item has one
-        if (item.supplier) {
+        if (item.supplier && Array.isArray(suppliers)) {
           const supplier = suppliers.find(s => s.name === item.supplier?.name)
           if (supplier) {
             setFormData(prev => ({ ...prev, supplierId: supplier.id }))
@@ -200,10 +206,10 @@ export function OrderForm({ isOpen, onClose, onSave, suggestedItem }: OrderFormP
         // Add item as first line
         setFormData(prev => ({
           ...prev,
-          lines: [{
+        lines: [{
             itemId: item.id,
             item,
-            quantityOrdered: 1,
+          quantityOrdered: 1,
             unitPrice: undefined,
             departmentId: '',
             notes: ''
@@ -216,7 +222,7 @@ export function OrderForm({ isOpen, onClose, onSave, suggestedItem }: OrderFormP
   function addLine() {
     setFormData(prev => ({
       ...prev,
-      lines: [...prev.lines, {
+        lines: [...prev.lines, {
         itemId: '',
         quantityOrdered: 1,
         unitPrice: undefined,
@@ -298,7 +304,7 @@ export function OrderForm({ isOpen, onClose, onSave, suggestedItem }: OrderFormP
     // Validate all lines
     for (let i = 0; i < formData.lines.length; i++) {
       const line = formData.lines[i]
-      if (!line.itemId || line.quantityOrdered <= 0) {
+      if (!line.itemId || line.quantityOrdered === '' || line.quantityOrdered <= 0) {
         showToast('error', `Linje ${i + 1}: Vare og antall må fylles ut`)
         return
       }
@@ -364,7 +370,7 @@ export function OrderForm({ isOpen, onClose, onSave, suggestedItem }: OrderFormP
               required
             >
               <option value="">Velg leverandør</option>
-              {suppliers.map(supplier => (
+              {Array.isArray(suppliers) && suppliers.map(supplier => (
                 <option key={supplier.id} value={supplier.id}>
                   {supplier.name} {supplier.shortCode && `(${supplier.shortCode})`}
                 </option>
@@ -461,8 +467,8 @@ export function OrderForm({ isOpen, onClose, onSave, suggestedItem }: OrderFormP
                           <Input
                             type="number"
                             className="text-sm"
-                            value={line.quantityOrdered}
-                            onChange={(e) => updateLine(index, 'quantityOrdered', Number(e.target.value))}
+                            value={line.quantityOrdered === '' ? '' : line.quantityOrdered}
+                            onChange={(e) => updateLine(index, 'quantityOrdered', e.target.value === '' ? '' : Number(e.target.value))}
                             min="1"
                             required
                           />
@@ -590,7 +596,7 @@ export function OrderForm({ isOpen, onClose, onSave, suggestedItem }: OrderFormP
                           </div>
                         )}
                         
-                        {line.supplierItem?.minimumOrderQty && line.quantityOrdered < line.supplierItem.minimumOrderQty && (
+                        {line.supplierItem?.minimumOrderQty && typeof line.quantityOrdered === 'number' && line.quantityOrdered < line.supplierItem.minimumOrderQty && (
                           <div className="bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 p-2 rounded">
                             ⚠️ Min. antall: {line.supplierItem.minimumOrderQty}
                           </div>

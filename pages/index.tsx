@@ -84,7 +84,7 @@ export default function Home() {
   if (loading) {
     return (
       <PageLayout
-        title="Lagersystem"
+        title="Dashboard"
         subtitle="Oversikt over beholdning og kritiske varsler"
         className="bg-slate-50"
       >
@@ -107,7 +107,7 @@ export default function Home() {
 
   return (
     <PageLayout
-      title="Lagersystem"
+      title="Dashboard"
       subtitle="Oversikt over beholdning og kritiske varsler"
       className="bg-slate-50"
     >
@@ -116,17 +116,6 @@ export default function Home() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.15 }}
       >
-        {/* Primary Action */}
-        <div className="mb-6">
-          <Button
-            onClick={() => window.location.href = '/scan'}
-            className="px-6 py-3 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors duration-150 font-medium"
-          >
-            <Package className="h-5 w-5 mr-2" />
-            Scan & Go
-          </Button>
-        </div>
-
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <StatHeader

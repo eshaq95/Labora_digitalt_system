@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableRow, TableHead, TableCell, TableBody } from '@/components/ui/table'
@@ -7,6 +7,12 @@ import { SearchInput } from '@/components/ui/search-input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useToast } from '@/components/ui/toast'
 import dynamic from 'next/dynamic'
+
+// Dynamic imports for heavy components
+const BarcodeScanner = dynamic(() => import('@/components/ui/barcode-scanner').then(mod => ({ default: mod.BarcodeScanner })), {
+  loading: () => <div className="flex items-center justify-center p-4"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div></div>,
+  ssr: false
+})
 
 // Code splitting for heavy form component
 const ReceiptForm = dynamic(() => import('@/components/forms/receipt-form').then(mod => ({ default: mod.ReceiptForm })), {
@@ -26,13 +32,18 @@ const ReceiptForm = dynamic(() => import('@/components/forms/receipt-form').then
   ssr: false
 })
 import { motion } from 'framer-motion'
-import { Plus, Receipt, Package, Clock, User } from 'lucide-react'
+import { Plus, Receipt, Package, Clock, User, Scan } from 'lucide-react'
 import { useRouter } from 'next/router'
+import { ScanResult } from '@/app/api/scan-lookup/route'
+import { Modal } from '@/components/ui/modal'
+import { Input } from '@/components/ui/input'
+import { parseGS1Code } from '@/lib/gs1-parser'
 
 type ReceiptType = { 
   id: string; 
   receivedAt: string;
   receivedBy?: string | null;
+  receiver?: { name: string } | null;
   order?: { orderNumber: string } | null;
   supplier?: { name: string } | null;
   lines: { 
@@ -48,6 +59,16 @@ export default function ReceiptsPage() {
   const [receipts, setReceipts] = useState<ReceiptType[]>([])
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
+  const [scannerOpen, setScannerOpen] = useState(false)
+  const [scanHandled, setScanHandled] = useState(false)
+  const scanHandledRef = useRef(false)
+  const [prefilledItem, setPrefilledItem] = useState<any>(null)
+  const [prefilledGS1Data, setPrefilledGS1Data] = useState<any>(null)
+  const [unknownCode, setUnknownCode] = useState<string | null>(null)
+  const [itemSelectOpen, setItemSelectOpen] = useState(false)
+  const [items, setItems] = useState<any[]>([])
+  const [itemSearch, setItemSearch] = useState('')
+  const [lastScanResult, setLastScanResult] = useState<ScanResult | null>(null)
   const [loading, setLoading] = useState(false)
   const { showToast } = useToast()
   const router = useRouter()
@@ -79,7 +100,103 @@ export default function ReceiptsPage() {
   useEffect(() => { load() }, [])
 
   function openCreate() {
+    setPrefilledItem(null)
+    setPrefilledGS1Data(null)
     setModalOpen(true)
+  }
+
+  function openScanner() {
+    // reset scan latch for a new session
+    setScanHandled(false)
+    scanHandledRef.current = false
+    setScannerOpen(true)
+  }
+
+  const handleScanSuccess = (result: ScanResult) => {
+    // Synchronous re-entrancy guard to avoid duplicate handling
+    if (scanHandledRef.current) return
+    scanHandledRef.current = true
+    setScanHandled(true)
+    setScannerOpen(false)
+    
+    if (result.type === 'ITEM' && result.data) {
+      // Vare funnet - åpne mottak-skjema med forhåndsutfylt vare
+      let message = `Vare funnet: ${result.data.name}`;
+      
+      // Add GS1 info to success message if available
+      if (result.gs1Data?.isGS1) {
+        const gs1Info: string[] = [];
+        if (result.gs1Data.lotNumber) gs1Info.push(`Lot: ${result.gs1Data.lotNumber}`);
+        if (result.gs1Data.expiryDate) {
+          const expiryDate = new Date(result.gs1Data.expiryDate);
+          gs1Info.push(`Utløper: ${expiryDate.toLocaleDateString('nb-NO')}`);
+        }
+        if (gs1Info.length > 0) {
+          message += ` (${gs1Info.join(', ')})`;
+        }
+      }
+      
+      showToast('success', message)
+      setPrefilledItem(result.data)
+      setPrefilledGS1Data(result.gs1Data)
+      setModalOpen(true)
+    } else if (result.type === 'UNKNOWN') {
+      // On-the-fly registration: let user identify item and bind barcode
+      setLastScanResult(result)
+      // Try to extract raw code from message if not provided
+      const rawFromMessage = result.message?.match(/"([^\"]+)"/)?.[1]
+      setUnknownCode(rawFromMessage || null)
+      // Load items list (lazy)
+      if (items.length === 0) {
+        fetch('/api/items?limit=1000').then(r => r.json()).then(data => {
+          setItems(data.items || data)
+          setItemSelectOpen(true)
+        }).catch(() => {
+          showToast('error', 'Kunne ikke laste varer for kobling')
+        })
+      } else {
+        setItemSelectOpen(true)
+      }
+      showToast('success', 'Ukjent kode – velg riktig vare for å koble strekkoden')
+    } else if (result.type === 'SSCC_ERROR') {
+      showToast('error', result.message || 'SSCC-kode kan ikke brukes for mottak')
+    } else {
+      showToast('error', 'Kunne ikke identifisere varen')
+    }
+  }
+
+  const filteredItemsForSelect = items.filter((it: any) => {
+    const q = itemSearch.toLowerCase()
+    return it.name?.toLowerCase().includes(q) || it.sku?.toLowerCase().includes(q)
+  })
+
+  const linkBarcodeAndOpenReceipt = async (item: any) => {
+    try {
+      const raw = unknownCode || ''
+      const gs1 = raw ? parseGS1Code(raw) : null
+      const barcodeToSave = gs1?.isGS1 && gs1.gtin ? gs1.gtin : raw
+      if (!barcodeToSave) {
+        showToast('error', 'Fant ikke gyldig kode å koble')
+        return
+      }
+      // Save barcode mapping
+      const res = await fetch(`/api/items/${item.id}/barcodes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode: barcodeToSave, type: gs1?.isGS1 ? 'GTIN' : 'CUSTOM', isPrimary: true })
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Kunne ikke koble strekkode')
+      }
+      showToast('success', 'Strekkode koblet til vare')
+      setItemSelectOpen(false)
+      setPrefilledItem(item)
+      setPrefilledGS1Data(lastScanResult?.gs1Data || (gs1?.isGS1 ? gs1 : null))
+      setModalOpen(true)
+    } catch (e: any) {
+      showToast('error', e.message || 'Feil ved kobling av strekkode')
+    }
   }
 
   return (
@@ -87,10 +204,16 @@ export default function ReceiptsPage() {
       title="Mottak"
       subtitle="Registrer varemottak og lagerbevegelser"
       actions={
-        <Button onClick={openCreate}>
-          <Plus className="w-4 h-4 mr-2" />
-          Nytt mottak
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={openScanner} variant="outline">
+            <Scan className="w-4 h-4 mr-2" />
+            Skann vare
+          </Button>
+          <Button onClick={openCreate}>
+            <Plus className="w-4 h-4 mr-2" />
+            Nytt mottak
+          </Button>
+        </div>
       }
     >
 
@@ -164,7 +287,7 @@ export default function ReceiptsPage() {
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <User className="w-4 h-4 text-gray-500" />
-                              <span className="text-sm">{receipt.receivedBy || '—'}</span>
+                              <span className="text-sm">{receipt.receiver?.name || '—'}</span>
                             </div>
                           </TableCell>
                           <TableCell>
@@ -237,10 +360,56 @@ export default function ReceiptsPage() {
 
       <ReceiptForm 
         isOpen={modalOpen} 
-        onClose={() => setModalOpen(false)} 
+        onClose={() => {
+          setModalOpen(false)
+          setPrefilledItem(null)
+          setPrefilledGS1Data(null)
+        }} 
         onSave={load}
         orderId={orderId as string}
+        prefilledItem={prefilledItem}
+        prefilledGS1Data={prefilledGS1Data}
       />
+
+      <BarcodeScanner
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScanSuccess={handleScanSuccess}
+        title="Skann vare for mottak"
+        description="Skann strekkode på varen du vil registrere mottak for"
+      />
+
+      {/* On-the-fly item selection for unknown codes */}
+      <Modal open={itemSelectOpen} onClose={() => setItemSelectOpen(false)} title="Koble strekkode til vare" size="lg">
+        <div className="space-y-4">
+          <div className="text-sm text-gray-600">
+            {unknownCode ? (
+              <span>Ukjent kode: <span className="font-mono text-gray-900 dark:text-gray-100">{unknownCode}</span></span>
+            ) : (
+              <span>Velg riktig vare fra listen</span>
+            )}
+          </div>
+          <Input
+            placeholder="Søk etter varenavn eller SKU..."
+            value={itemSearch}
+            onChange={(e) => setItemSearch(e.target.value)}
+          />
+          <div className="max-h-96 overflow-y-auto divide-y">
+            {filteredItemsForSelect.map((it: any) => (
+              <div key={it.id} className="py-3 flex items-center justify-between">
+                <div>
+                  <div className="font-medium">{it.name}</div>
+                  <div className="text-xs text-gray-500">SKU: {it.sku}</div>
+                </div>
+                <Button onClick={() => linkBarcodeAndOpenReceipt(it)}>Velg</Button>
+              </div>
+            ))}
+            {filteredItemsForSelect.length === 0 && (
+              <div className="text-sm text-gray-500 py-6 text-center">Ingen treff</div>
+            )}
+          </div>
+        </div>
+      </Modal>
     </PageLayout>
   )
 }

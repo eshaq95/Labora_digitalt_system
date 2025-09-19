@@ -3,11 +3,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
 import { useToast } from '@/components/ui/toast'
+import { BarcodeManager } from './barcode-manager'
 import { Package, AlertTriangle, Calendar, Hash, MapPin } from 'lucide-react'
 
 type FormData = {
   name: string
   sku: string
+  barcode: string
   manufacturer: string
   description: string
   departmentId: string
@@ -16,11 +18,11 @@ type FormData = {
   defaultLocationId: string
   unit: string
   orderUnit: string
-  conversionFactor: number | null
+  conversionFactor: number | null | ''
   contentPerPack: string
-  minStock: number
-  maxStock: number | null
-  salesPrice: number | null
+  minStock: number | ''
+  maxStock: number | null | ''
+  salesPrice: number | null | ''
   requiresLotNumber: boolean
   expiryTracking: boolean
   hazardous: boolean
@@ -35,6 +37,7 @@ type Item = {
   id: string
   name: string
   sku: string
+  barcode?: string | null
   manufacturer?: string | null
   description?: string | null
   departmentId?: string | null
@@ -56,6 +59,13 @@ type Item = {
   notes?: string | null
   // NYE FELTER:
   standingOrderDetails?: string | null
+  barcodes?: Array<{
+    id: string
+    barcode: string
+    type: string
+    isPrimary: boolean
+    description?: string | null
+  }>
 }
 
 type Department = { id: string; name: string; code: string }
@@ -91,6 +101,7 @@ export function ItemForm({ isOpen, onClose, editItem, onSave }: ItemFormProps) {
   const [formData, setFormData] = useState<FormData>({
     name: '',
     sku: '',
+    barcode: '',
     manufacturer: '',
     description: '',
     departmentId: '',
@@ -119,6 +130,7 @@ export function ItemForm({ isOpen, onClose, editItem, onSave }: ItemFormProps) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [loading, setLoading] = useState(false)
+  const [barcodeManagerOpen, setBarcodeManagerOpen] = useState(false)
   const { showToast } = useToast()
 
   // Load reference data
@@ -144,6 +156,7 @@ export function ItemForm({ isOpen, onClose, editItem, onSave }: ItemFormProps) {
       setFormData({
         name: editItem.name,
         sku: editItem.sku,
+        barcode: editItem.barcode || '',
         manufacturer: editItem.manufacturer || '',
         description: editItem.description || '',
         departmentId: editItem.departmentId || '',
@@ -171,6 +184,7 @@ export function ItemForm({ isOpen, onClose, editItem, onSave }: ItemFormProps) {
       setFormData({
         name: '',
         sku: '',
+        barcode: '',
         manufacturer: '',
         description: '',
         departmentId: '',
@@ -224,10 +238,10 @@ export function ItemForm({ isOpen, onClose, editItem, onSave }: ItemFormProps) {
       
       const payload = {
         ...formData,
-        minStock: Number(formData.minStock),
-        maxStock: formData.maxStock ? Number(formData.maxStock) : null,
-        salesPrice: formData.salesPrice ? Number(formData.salesPrice) : null,
-        conversionFactor: formData.conversionFactor ? Number(formData.conversionFactor) : null,
+        minStock: formData.minStock === '' ? 0 : Number(formData.minStock),
+        maxStock: formData.maxStock === '' ? null : Number(formData.maxStock),
+        salesPrice: formData.salesPrice === '' ? null : Number(formData.salesPrice),
+        conversionFactor: formData.conversionFactor === '' ? null : Number(formData.conversionFactor),
         departmentId: formData.departmentId || null,
         categoryId: formData.categoryId || null,
         supplierId: formData.supplierId || null,
@@ -283,6 +297,30 @@ export function ItemForm({ isOpen, onClose, editItem, onSave }: ItemFormProps) {
               required
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              Primær strekkode
+            </label>
+            <div className="flex gap-2">
+              <Input
+                value={formData.barcode}
+                onChange={(e) => setFormData(prev => ({ ...prev, barcode: e.target.value }))}
+                placeholder="Skann eller skriv inn strekkode"
+                className="flex-1"
+              />
+              {editItem && (
+                <Button
+                  type="button"
+                  onClick={() => setBarcodeManagerOpen(true)}
+                  variant="outline"
+                  className="px-3"
+                  title="Administrer alle strekkoder"
+                >
+                  <Package className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -299,10 +337,10 @@ export function ItemForm({ isOpen, onClose, editItem, onSave }: ItemFormProps) {
             <Input
               type="number"
               step="0.01"
-              value={formData.salesPrice || ''}
+              value={formData.salesPrice === null ? '' : formData.salesPrice}
               onChange={(e) => setFormData(prev => ({ 
                 ...prev, 
-                salesPrice: e.target.value ? Number(e.target.value) : null 
+                salesPrice: e.target.value === '' ? null : Number(e.target.value) 
               }))}
               placeholder="0.00"
             />
@@ -396,10 +434,10 @@ export function ItemForm({ isOpen, onClose, editItem, onSave }: ItemFormProps) {
             <label className="block text-sm font-medium mb-2">Konverteringsfaktor</label>
             <Input
               type="number"
-              value={formData.conversionFactor || ''}
+              value={formData.conversionFactor === null ? '' : formData.conversionFactor}
               onChange={(e) => setFormData(prev => ({ 
                 ...prev, 
-                conversionFactor: e.target.value ? Number(e.target.value) : null 
+                conversionFactor: e.target.value === '' ? null : Number(e.target.value) 
               }))}
               placeholder="f.eks. 48"
             />
@@ -422,8 +460,8 @@ export function ItemForm({ isOpen, onClose, editItem, onSave }: ItemFormProps) {
             </label>
             <Input
               type="number"
-              value={formData.minStock}
-              onChange={(e) => setFormData(prev => ({ ...prev, minStock: Number(e.target.value) }))}
+              value={formData.minStock === '' ? '' : formData.minStock}
+              onChange={(e) => setFormData(prev => ({ ...prev, minStock: e.target.value === '' ? '' : Number(e.target.value) }))}
               min="0"
               required
             />
@@ -432,10 +470,10 @@ export function ItemForm({ isOpen, onClose, editItem, onSave }: ItemFormProps) {
             <label className="block text-sm font-medium mb-2">Maksimum beholdning</label>
             <Input
               type="number"
-              value={formData.maxStock || ''}
+              value={formData.maxStock === null ? '' : formData.maxStock}
               onChange={(e) => setFormData(prev => ({ 
                 ...prev, 
-                maxStock: e.target.value ? Number(e.target.value) : null 
+                maxStock: e.target.value === '' ? null : Number(e.target.value) 
               }))}
               min="0"
             />
@@ -555,6 +593,19 @@ export function ItemForm({ isOpen, onClose, editItem, onSave }: ItemFormProps) {
           </Button>
         </div>
       </form>
+
+      {/* Barcode Manager Modal */}
+      {editItem && (
+        <BarcodeManager
+          itemId={editItem.id}
+          isOpen={barcodeManagerOpen}
+          onClose={() => setBarcodeManagerOpen(false)}
+          onUpdate={() => {
+            // Refresh the item data if needed
+            onSave()
+          }}
+        />
+      )}
     </Modal>
   )
 }

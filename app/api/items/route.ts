@@ -45,6 +45,19 @@ export const GET = requireAuth(async (req) => {
           select: {
             quantity: true
           }
+        },
+        barcodes: {
+          select: {
+            id: true,
+            barcode: true,
+            type: true,
+            isPrimary: true,
+            description: true
+          },
+          orderBy: [
+            { isPrimary: 'desc' },
+            { createdAt: 'asc' }
+          ]
         }
       },
     })

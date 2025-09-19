@@ -20,7 +20,7 @@ const QuickConsumptionModal = dynamic(() => import('@/components/inventory/quick
   loading: () => <div className="flex items-center justify-center p-4"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div></div>,
   ssr: false
 })
-import { Package, Truck, Warehouse, ClipboardList, Receipt, Menu, X, Sparkles, BarChart3, Calculator, Scan } from 'lucide-react'
+import { Package, Truck, Warehouse, ClipboardList, Receipt, Menu, X, LayoutDashboard, BarChart3, Calculator, Scan } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ScanResult } from '@/app/api/scan-lookup/route'
 import '../styles/globals.css'
@@ -30,7 +30,7 @@ const sidebarNavigation = [
   {
     title: 'Oversikt',
     items: [
-      { href: '/', label: 'Dashboard', icon: Sparkles, description: 'Oversikt og nøkkeltall' }
+      { href: '/', label: 'Dashboard', icon: LayoutDashboard, description: 'Oversikt og nøkkeltall' }
     ]
   },
   {

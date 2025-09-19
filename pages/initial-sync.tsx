@@ -3,10 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PageLayout } from '@/components/layout/page-layout'
+import { Modal } from '@/components/ui/modal'
 import { BarcodeScanner } from '@/components/ui/barcode-scanner'
 import { useToast } from '@/components/ui/toast'
 import { motion, AnimatePresence } from 'framer-motion'
 import { parseGS1Code, formatGS1Data } from '@/lib/gs1-parser'
+import { ScanResult } from '@/app/api/scan-lookup/route'
 import { 
   Scan, 
   Package, 
@@ -46,12 +48,22 @@ export default function InitialSyncPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [scannerOpen, setScannerOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [existingItemErrorOpen, setExistingItemErrorOpen] = useState(false)
+  const [existingItemName, setExistingItemName] = useState<string>('')
   
   // Form data
-  const [quantity, setQuantity] = useState('')
+  const [quantity, setQuantity] = useState<string>('')
   const [batchNumber, setBatchNumber] = useState('')
   const [expiryDate, setExpiryDate] = useState('')
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null)
+  
+  // Helpers
+  const formatDateYMD = (d: Date) => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }
   
   const { showToast } = useToast()
 
@@ -69,6 +81,8 @@ export default function InitialSyncPage() {
   }, [])
 
   const handleScan = async (code: string) => {
+    console.log('⚠️ OLD handleScan function called with:', code)
+    console.log('⚠️ This should NOT be called anymore!')
     setScannedCode(code)
     setScannerOpen(false)
     setLoading(true)
@@ -82,11 +96,9 @@ export default function InitialSyncPage() {
       if (gs1Data.isGS1) {
         if (gs1Data.lotNumber) {
           setBatchNumber(gs1Data.lotNumber)
-          showToast('success', `Lotnummer automatisk fylt: ${gs1Data.lotNumber}`)
         }
         if (gs1Data.expiryDate) {
-          setExpiryDate(gs1Data.expiryDate.toISOString().split('T')[0])
-          showToast('success', `Utløpsdato automatisk fylt: ${gs1Data.expiryDate.toLocaleDateString('nb-NO')}`)
+          setExpiryDate(formatDateYMD(gs1Data.expiryDate))
         }
       }
 
@@ -101,15 +113,101 @@ export default function InitialSyncPage() {
         showToast('success', `Strekkode allerede registrert for ${result.data.name}`)
       } else if (result.type === 'SSCC_ERROR') {
         // SSCC code detected
-        showToast('error', result.message)
+        showToast('error', result.message || 'SSCC code error')
         setCurrentStep('scan')
-      } else {
-        // Unknown code - need identification
+      } else if (result.type === 'UNKNOWN') {
+        // Unknown code - this is expected in Initial Sync, don't show error
         setCurrentStep('identify')
-        showToast('info', gs1Data.isGS1 
-          ? `GS1-kode detektert: ${formatGS1Data(gs1Data)}. Vennligst identifiser varen.`
-          : 'Ukjent strekkode - vennligst identifiser varen'
-        )
+        if (gs1Data.isGS1) {
+          const autoFilledParts: string[] = []
+          if (gs1Data.lotNumber) autoFilledParts.push(`Lot: ${gs1Data.lotNumber}`)
+          if (gs1Data.expiryDate) autoFilledParts.push(`Utløper: ${gs1Data.expiryDate.toLocaleDateString('nb-NO')}`)
+          
+          const autoFilledText = autoFilledParts.length > 0 
+            ? ` (${autoFilledParts.join(', ')} automatisk fylt)`
+            : ''
+          
+          showToast('success', `GS1-kode detektert${autoFilledText}. Vennligst identifiser varen.`)
+        } else {
+          showToast('success', 'Ukjent strekkode detektert - vennligst identifiser varen.')
+        }
+      } else {
+        // Any other case
+        setCurrentStep('identify')
+        showToast('success', 'Vennligst identifiser varen.')
+      }
+    } catch (error) {
+      showToast('error', 'Feil ved oppslag av strekkode')
+      setCurrentStep('identify')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleManualScan = async (code: string) => {
+    setLoading(true)
+    setScannedCode(code)
+
+    try {
+      // Call the scan-lookup API
+      const response = await fetch('/api/scan-lookup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ scannedCode: code }),
+      })
+
+      const result = await response.json()
+
+      // Korrigert logikk: både kjente og ukjente koder kan brukes
+      if (result.type === 'ITEM' && result.data) {
+        // Kjent kode → gå direkte til telling/batch/lokasjon
+        setSelectedItem(result.data)
+        // Auto-fyll GS1 batch/utløp hvis tilgjengelig
+        const gs1 = result.gs1Data
+        if (gs1?.lotNumber) setBatchNumber(gs1.lotNumber)
+        if (gs1?.expiryDate) setExpiryDate(formatDateYMD(new Date(gs1.expiryDate)))
+        setCurrentStep('count')
+        showToast('success', `Vare identifisert: ${result.data.name}`)
+      } else if (result.type === 'SSCC_ERROR') {
+        // SSCC code detected
+        showToast('error', result.message || 'SSCC code error')
+        setCurrentStep('scan')
+      } else if (result.type === 'UNKNOWN') {
+        // Ukjent kode – identifiser vare on-the-fly
+        const gs1Data = parseGS1Code(code)
+        console.log('🔍 GS1 Data in manual scan:', gs1Data)
+        
+        if (gs1Data.isGS1) {
+          if (gs1Data.lotNumber) {
+            console.log('🏷️ Setting batch number (manual):', gs1Data.lotNumber)
+            setBatchNumber(gs1Data.lotNumber)
+          }
+          if (gs1Data.expiryDate) {
+            const dateString = formatDateYMD(gs1Data.expiryDate)
+            console.log('📅 Setting expiry date (manual):', dateString)
+            setExpiryDate(dateString)
+          }
+          
+          const autoFilledParts: string[] = []
+          if (gs1Data.lotNumber) autoFilledParts.push(`Lot: ${gs1Data.lotNumber}`)
+          if (gs1Data.expiryDate) autoFilledParts.push(`Utløper: ${gs1Data.expiryDate.toLocaleDateString('nb-NO')}`)
+          
+          const autoFilledText = autoFilledParts.length > 0 
+            ? ` (${autoFilledParts.join(', ')} automatisk fylt)`
+            : ''
+          
+          showToast('success', `GS1-kode detektert${autoFilledText}. Vennligst identifiser varen.`)
+        } else {
+          showToast('success', 'Ukjent strekkode detektert - vennligst identifiser varen.')
+        }
+        
+        setCurrentStep('identify')
+      } else {
+        // Any other case
+        setCurrentStep('identify')
+        showToast('success', 'Vennligst identifiser varen.')
       }
     } catch (error) {
       showToast('error', 'Feil ved oppslag av strekkode')
@@ -169,22 +267,29 @@ export default function InitialSyncPage() {
       }
 
       // 2. Create inventory lot
+      const lotData = {
+        itemId: selectedItem.id,
+        locationId: selectedLocation.id,
+        quantity: parseInt(quantity),
+        batchNumber: batchNumber?.trim() || null,
+        expiryDate: expiryDate?.trim() || null
+      }
+      
+      console.log('📦 Creating inventory lot with data:', lotData)
+      console.log('🏷️ Batch number value:', batchNumber, 'Type:', typeof batchNumber)
+      console.log('📅 Expiry date value:', expiryDate, 'Type:', typeof expiryDate)
+      
       const lotResponse = await fetch('/api/inventory/lots', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          itemId: selectedItem.id,
-          locationId: selectedLocation.id,
-          quantity: parseInt(quantity),
-          batchNumber: batchNumber || null,
-          expiryDate: expiryDate || null,
-          source: 'INITIAL_SYNC'
-        })
+        body: JSON.stringify(lotData)
       })
 
       if (!lotResponse.ok) {
-        throw new Error('Kunne ikke registrere lagerbeholdning')
+        const errorData = await lotResponse.json().catch(() => ({}))
+        console.error('❌ Lot API error:', errorData)
+        throw new Error(errorData.error || errorData.details || 'Kunne ikke registrere lagerbeholdning')
       }
 
       showToast('success', `${selectedItem.name} registrert med ${quantity} stk`)
@@ -290,7 +395,7 @@ export default function InitialSyncPage() {
                         onChange={(e) => setScannedCode(e.target.value)}
                         onKeyPress={(e) => {
                           if (e.key === 'Enter' && scannedCode) {
-                            handleScan(scannedCode)
+                            handleManualScan(scannedCode)
                           }
                         }}
                       />
@@ -299,7 +404,7 @@ export default function InitialSyncPage() {
 
                   {scannedCode && (
                     <Button 
-                      onClick={() => handleScan(scannedCode)}
+                      onClick={() => handleManualScan(scannedCode)}
                       disabled={loading}
                       className="w-full"
                     >
@@ -609,9 +714,85 @@ export default function InitialSyncPage() {
         <BarcodeScanner
           isOpen={scannerOpen}
           onClose={() => setScannerOpen(false)}
-          onScan={handleScan}
+          onScanSuccess={(result) => {
+            console.log('🎯 Initial Sync onScanSuccess called with:', result)
+            // Prefer raw code from gs1Data when available; fallback to message extraction
+            const rawFromGs1 = (result as any)?.gs1Data?.raw as string | undefined
+            const rawFromMessage = result.message?.match(/"([^"]+)"/)?.[1]
+            const resolvedCode = rawFromGs1 || rawFromMessage
+            console.log('📱 Resolved code:', resolvedCode)
+            if (resolvedCode) setScannedCode(resolvedCode)
+
+            // Handle the result directly without calling handleScan to avoid duplicate API calls
+            console.log('🔍 Result type:', result.type)
+
+            // Item already registered → always show error and stay on scan step
+            if (result.type === 'ITEM' && result.data) {
+              setExistingItemName(result.data.name)
+              setExistingItemErrorOpen(true)
+              setCurrentStep('scan')
+              return
+            }
+
+            if (result.type === 'SSCC_ERROR') {
+              showToast('error', result.message || 'SSCC code error')
+              setCurrentStep('scan')
+              return
+            }
+
+            if (result.type === 'UNKNOWN') {
+              // Unknown code - parse GS1 if possible and auto-fill
+              const codeToParse = resolvedCode
+              if (codeToParse) {
+                const gs1Data = parseGS1Code(codeToParse)
+                console.log('🔍 GS1 Data in callback:', gs1Data)
+                if (gs1Data.isGS1) {
+                  if (gs1Data.lotNumber) {
+                    console.log('🏷️ Setting batch number:', gs1Data.lotNumber)
+                    setBatchNumber(gs1Data.lotNumber)
+                  }
+                  if (gs1Data.expiryDate) {
+                    const dateString = formatDateYMD(gs1Data.expiryDate)
+                    console.log('📅 Setting expiry date:', dateString)
+                    setExpiryDate(dateString)
+                  }
+
+                  const autoFilledParts: string[] = []
+                  if (gs1Data.lotNumber) autoFilledParts.push(`Lot: ${gs1Data.lotNumber}`)
+                  if (gs1Data.expiryDate) autoFilledParts.push(`Utløper: ${gs1Data.expiryDate.toLocaleDateString('nb-NO')}`)
+                  const autoFilledText = autoFilledParts.length > 0 ? ` (${autoFilledParts.join(', ')} automatisk fylt)` : ''
+                  showToast('success', `GS1-kode detektert${autoFilledText}. Vennligst identifiser varen.`)
+                } else {
+                  showToast('success', 'Ukjent strekkode detektert - vennligst identifiser varen.')
+                }
+              } else {
+                showToast('success', 'Ukjent strekkode detektert - vennligst identifiser varen.')
+              }
+              setCurrentStep('identify')
+              return
+            }
+
+            // Fallback
+            setCurrentStep('identify')
+            showToast('success', 'Vennligst identifiser varen.')
+          }}
+          title="Skann vare for registrering"
+          description="Skann strekkode eller QR-kode på varen du vil registrere"
         />
       </div>
+      {/* Prominent center error for already-registered items */}
+      <Modal open={existingItemErrorOpen} onClose={() => setExistingItemErrorOpen(false)} size="sm" title="Allerede registrert">
+        <div className="text-center py-2">
+          <div className="text-red-600 font-semibold text-base">Strekkoden er allerede registrert</div>
+          {existingItemName && (
+            <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">{existingItemName}</div>
+          )}
+          <div className="mt-2 text-xs text-gray-500">Bruk Scan & Go for uttak</div>
+          <div className="mt-4">
+            <Button className="w-full" onClick={() => setExistingItemErrorOpen(false)}>OK</Button>
+          </div>
+        </div>
+      </Modal>
     </PageLayout>
   )
 }

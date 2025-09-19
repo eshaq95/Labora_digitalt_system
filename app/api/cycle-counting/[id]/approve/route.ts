@@ -41,6 +41,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return Response.json({ error: 'Kan kun godkjenne fullførte varetellinger' }, { status: 400 })
     }
 
+    // Blokker godkjenning hvis omtelling kreves
+    const hasPendingRecounts = session.lines.some(l => l.needsRecount)
+    if (hasPendingRecounts) {
+      return Response.json({ error: 'Det finnes linjer som krever omtelling før godkjenning' }, { status: 400 })
+    }
+
     // Sjekk bruker og rettigheter
     const user = await prisma.user.findUnique({
       where: { id: approvedBy }
@@ -87,7 +93,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             quantityChange: adjustment,
             quantityBefore: lot.quantity,
             quantityAfter: lot.quantity + adjustment,
-            reasonCode: 'CYCLE_COUNT_ADJUSTMENT',
+            reasonCode: line.reasonCode || 'CYCLE_COUNT_ADJUSTMENT',
             notes: `Varetelling justering: ${line.notes || 'Ingen merknad'}. ${adjustmentNotes || ''}`,
             userId: approvedBy,
             countingSessionId: session.id

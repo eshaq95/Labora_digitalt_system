@@ -117,6 +117,9 @@ type Item = {
   defaultLocation?: { name: string } | null;
   currentStock: number;
   hmsCodes?: string | null;
+  // Barcode fields (legacy single barcode and new multiple barcodes)
+  barcode?: string | null;
+  barcodes?: { id: string; barcode: string; type: string; isPrimary: boolean; description?: string | null }[];
 }
 
 export default function ItemsPage() {
@@ -283,7 +286,7 @@ export default function ItemsPage() {
       showToast('error', 'Velg en fil å importere')
       return
     }
-    
+
     setImporting(true)
     try {
       const importFormData = new FormData()
@@ -481,27 +484,28 @@ export default function ItemsPage() {
                 action={!search ? <Button onClick={openCreate}>Opprett vare</Button> : undefined}
               />
             ) : (
-              <div className="rounded-lg overflow-hidden">
+              <div className="rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-gray-50/50 dark:bg-gray-800/50">
-                        <TableHead className="font-semibold w-32">SKU</TableHead>
-                        <TableHead className="font-semibold min-w-48">Navn</TableHead>
-                        <TableHead className="font-semibold w-24 hidden lg:table-cell">Kategori</TableHead>
-                        <TableHead className="font-semibold w-28 hidden xl:table-cell">Avdeling</TableHead>
-                        <TableHead className="font-semibold w-28">Status</TableHead>
-                        <TableHead className="font-semibold text-right w-24">Beholdning</TableHead>
-                        <TableHead className="font-semibold text-right w-20">Handlinger</TableHead>
+                      <TableRow className="bg-gray-50/50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
+                        <TableHead className="font-semibold w-32 px-4 py-3 text-left">SKU</TableHead>
+                        <TableHead className="font-semibold min-w-48 px-4 py-3 text-left">Navn</TableHead>
+                        <TableHead className="font-semibold w-32 px-4 py-3 text-left hidden md:table-cell">Strekkode</TableHead>
+                        <TableHead className="font-semibold w-24 px-4 py-3 text-left hidden lg:table-cell">Kategori</TableHead>
+                        <TableHead className="font-semibold w-28 px-4 py-3 text-left hidden xl:table-cell">Avdeling</TableHead>
+                        <TableHead className="font-semibold w-28 px-4 py-3 text-left">Status</TableHead>
+                        <TableHead className="font-semibold w-24 px-4 py-3 text-right">Beholdning</TableHead>
+                        <TableHead className="font-semibold w-20 px-4 py-3 text-right">Handlinger</TableHead>
                       </TableRow>
                     </TableHeader>
-                  <TableBody>
+                    <TableBody>
                     {Object.entries(groupedItems).map(([groupName, itemsInGroup]) => (
                       <React.Fragment key={groupName}>
                         {/* GRUPPE OVERSKRIFT */}
                         {groupBy && Object.keys(groupedItems).length > 1 && (
-                          <TableRow className="bg-gray-100 dark:bg-gray-800/70">
-                            <TableCell colSpan={7} className="font-bold text-lg py-3">
+                          <TableRow className="bg-gray-100 dark:bg-gray-800/70 border-b border-gray-200 dark:border-gray-700">
+                            <TableCell colSpan={8} className="font-bold text-lg py-3 px-4">
                               {groupName} ({itemsInGroup.length} varer)
                             </TableCell>
                           </TableRow>
@@ -514,12 +518,12 @@ export default function ItemsPage() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: index * 0.05 }}
-                        className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors"
+                        className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors border-b border-gray-100 dark:border-gray-800"
                       >
-                        <TableCell className="font-mono text-sm text-gray-600 dark:text-gray-400 w-32">
+                        <TableCell className="font-mono text-sm text-gray-600 dark:text-gray-400 w-32 px-4 py-3">
                           <div className="truncate" title={item.sku}>{item.sku}</div>
                         </TableCell>
-                        <TableCell className="min-w-48">
+                        <TableCell className="min-w-48 px-4 py-3">
                           <div className="space-y-1">
                             <div className="font-medium text-sm leading-tight">{item.name}</div>
                             <div className="flex flex-wrap gap-1 text-xs">
@@ -532,17 +536,50 @@ export default function ItemsPage() {
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="w-24 hidden lg:table-cell">
+                        <TableCell className="w-32 px-4 py-3 hidden md:table-cell">
+                          <div className="space-y-1">
+                            {item.barcode && (
+                              <div className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate" title={item.barcode}>
+                                {item.barcode}
+                              </div>
+                            )}
+                            {item.barcodes && item.barcodes.length > 0 && (
+                              <div className="space-y-1">
+                                {item.barcodes.slice(0, 2).map((bc, idx) => (
+                                  <div key={idx} className="flex items-center gap-1">
+                                    <span className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate" title={bc.barcode}>
+                                      {bc.barcode}
+                                    </span>
+                                    {bc.isPrimary && (
+                                      <span className="text-xs px-1 py-0.5 bg-blue-100 text-blue-700 rounded">
+                                        P
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                                {item.barcodes.length > 2 && (
+                                  <div className="text-xs text-gray-400">
+                                    +{item.barcodes.length - 2} flere
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {!item.barcode && (!item.barcodes || item.barcodes.length === 0) && (
+                              <span className="text-xs text-gray-400 italic">Ingen</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="w-24 px-4 py-3 hidden lg:table-cell">
                           <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full whitespace-nowrap bg-blue-50 text-blue-700 border border-blue-200">
                             {item.category?.name || 'Ukategorisert'}
                           </span>
                         </TableCell>
-                        <TableCell className="text-muted w-28 hidden xl:table-cell">
+                        <TableCell className="text-muted w-28 px-4 py-3 hidden xl:table-cell">
                           <div className="truncate text-sm">
                             {item.department?.name || '—'}
                           </div>
                         </TableCell>
-                        <TableCell className="w-28">
+                        <TableCell className="w-28 px-4 py-3">
                           <div className="flex flex-col items-start gap-1">
                             {/* Lagerstatus først (viktigst) */}
                             {item.currentStock === 0 ? (
@@ -579,7 +616,7 @@ export default function ItemsPage() {
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="text-right w-24">
+                        <TableCell className="text-right w-24 px-4 py-3">
                           <div className="font-medium">
                             <div className={item.currentStock <= item.minStock ? 'text-red-600 font-bold' : ''}>
                               {item.currentStock}
@@ -587,7 +624,7 @@ export default function ItemsPage() {
                             <div className="text-gray-500 text-xs">min {item.minStock}</div>
                           </div>
                         </TableCell>
-                        <TableCell className="text-right w-20">
+                        <TableCell className="text-right w-20 px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
                             <Button
                               variant="outline"

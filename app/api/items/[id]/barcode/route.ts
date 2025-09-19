@@ -7,9 +7,12 @@ const barcodeSchema = z.object({
   barcode: z.string().min(1, 'Strekkode er påkrevd')
 })
 
-export const POST = requireAuth(async (req, { params }) => {
+export const POST = requireAuth(async (req) => {
   try {
-    const { id } = params
+    // Extract id from URL path
+    const url = new URL(req.url)
+    const pathParts = url.pathname.split('/')
+    const id = pathParts[pathParts.indexOf('items') + 1]
     const body = await req.json()
     const { barcode } = barcodeSchema.parse(body)
 

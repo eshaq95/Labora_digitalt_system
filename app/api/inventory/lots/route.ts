@@ -8,14 +8,19 @@ const lotSchema = z.object({
   locationId: z.string().min(1, 'Lokasjon ID er påkrevd'),
   quantity: z.number().positive('Antall må være positivt'),
   batchNumber: z.string().optional().nullable(),
-  expiryDate: z.string().optional().nullable(),
-  source: z.enum(['INITIAL_SYNC', 'RECEIPT', 'ADJUSTMENT']).default('RECEIPT')
+  expiryDate: z.string().optional().nullable()
 })
 
 export const POST = requireAuth(async (req) => {
   try {
     const body = await req.json()
-    const { itemId, locationId, quantity, batchNumber, expiryDate, source } = lotSchema.parse(body)
+    console.log('📦 Inventory lot API received body:', body)
+    
+    const { itemId, locationId, quantity, batchNumber, expiryDate } = lotSchema.parse(body)
+    
+    console.log('📦 Parsed values:')
+    console.log('  - batchNumber:', batchNumber, 'Type:', typeof batchNumber)
+    console.log('  - expiryDate:', expiryDate, 'Type:', typeof expiryDate)
 
     const userId = req.user?.userId
     if (!userId) {
@@ -36,16 +41,25 @@ export const POST = requireAuth(async (req) => {
       return NextResponse.json({ error: 'Lokasjon ikke funnet' }, { status: 404 })
     }
 
-    // Create inventory lot
-    const lot = await prisma.inventoryLot.create({
-      data: {
+    // Helper: normalize a YYYY-MM-DD to start-of-day UTC (date-only semantics)
+    const toUtcDayRange = (dateStr?: string | null) => {
+      if (!dateStr) return { start: null as Date | null, end: null as Date | null }
+      const [y, m, d] = dateStr.split('-').map((x) => parseInt(x, 10))
+      const start = new Date(Date.UTC(y, (m || 1) - 1, d || 1, 0, 0, 0, 0))
+      const end = new Date(Date.UTC(y, (m || 1) - 1, (d || 1) + 1, 0, 0, 0, 0))
+      return { start, end }
+    }
+    const { start: expiryStartUTC, end: expiryEndUTC } = toUtcDayRange(expiryDate)
+
+    // Check if a lot with same item, location, lotNumber, and expiryDate already exists
+    const existingLot = await prisma.inventoryLot.findFirst({
+      where: {
         itemId,
         locationId,
-        quantity,
-        batchNumber,
-        expiryDate: expiryDate ? new Date(expiryDate) : null,
-        source,
-        createdBy: userId
+        lotNumber: batchNumber,
+        ...(expiryStartUTC && expiryEndUTC
+          ? { expiryDate: { gte: expiryStartUTC, lt: expiryEndUTC } }
+          : { expiryDate: null })
       },
       include: {
         item: { select: { name: true, sku: true } },
@@ -53,20 +67,68 @@ export const POST = requireAuth(async (req) => {
       }
     })
 
+    let lot
+    let previousQuantity = 0
+    if (existingLot) {
+      // Update existing lot by adding the quantity
+      console.log(`📦 Found existing lot ${existingLot.id}, adding ${quantity} to existing ${existingLot.quantity}`)
+      previousQuantity = existingLot.quantity
+      lot = await prisma.inventoryLot.update({
+        where: { id: existingLot.id },
+        data: { quantity: existingLot.quantity + quantity },
+        include: {
+          item: { select: { name: true, sku: true } },
+          location: { select: { name: true, code: true } }
+        }
+      })
+    } else {
+      // Create new lot
+      const lotCreateData = {
+        itemId,
+        locationId,
+        quantity,
+        lotNumber: batchNumber,
+        expiryDate: expiryStartUTC
+      }
+      
+      console.log('📦 Creating new lot with data:', lotCreateData)
+      
+      lot = await prisma.inventoryLot.create({
+        data: lotCreateData,
+        include: {
+          item: { select: { name: true, sku: true } },
+          location: { select: { name: true, code: true } }
+        }
+      })
+      previousQuantity = 0
+    }
+
     // Create inventory transaction for audit trail
     await prisma.inventoryTransaction.create({
       data: {
-        lotId: lot.id,
-        type: source === 'INITIAL_SYNC' ? 'INITIAL_COUNT' : 'RECEIPT',
-        quantity,
-        reason: source === 'INITIAL_SYNC' ? 'Initial synkronisering' : 'Varemottak',
-        performedBy: userId
+        inventoryLotId: lot.id,
+        type: 'INITIAL_COUNT',
+        quantityChange: quantity,
+        quantityBefore: previousQuantity,
+        quantityAfter: previousQuantity + quantity,
+        userId
       }
     })
 
     return NextResponse.json(lot, { status: 201 })
   } catch (error: any) {
-    console.error('Error creating inventory lot:', error)
+    console.error('❌ Error creating inventory lot:', error)
+    console.error('❌ Error stack:', error.stack)
+    
+    // Check if it's a Zod validation error
+    if (error.name === 'ZodError') {
+      console.error('❌ Zod validation errors:', error.errors)
+      return NextResponse.json({ 
+        error: 'Ugyldig data',
+        details: error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ')
+      }, { status: 400 })
+    }
+    
     return NextResponse.json({ 
       error: 'Kunne ikke opprette lagerlot',
       details: error.message 

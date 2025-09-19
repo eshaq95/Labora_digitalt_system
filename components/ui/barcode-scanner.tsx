@@ -31,9 +31,16 @@ export function BarcodeScanner({
   
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
   const scannerElementId = 'qr-reader';
+  const scanLockRef = useRef(false);
 
   // Lookup funksjon som kaller vår smart resolver
   const lookupCode = async (code: string) => {
+    // Prevent duplicate lookups from rapid successive decode callbacks
+    if (scanLockRef.current) {
+      return;
+    }
+    scanLockRef.current = true;
+    console.log('🎯 BarcodeScanner lookupCode called with:', code);
     setIsLoading(true);
     setError(null);
     
@@ -47,16 +54,18 @@ export function BarcodeScanner({
       });
 
       const result: ScanResult = await response.json();
+      console.log('🔍 BarcodeScanner got result:', result)
       
-      if (result.type === 'UNKNOWN') {
-        setError(result.message || 'Ukjent kode');
-      } else {
-        onScanSuccess(result);
-        onClose();
-      }
+      // Always call onScanSuccess and let the parent handle the result type
+      console.log('📞 Calling onScanSuccess')
+      onScanSuccess(result);
+      console.log('🚪 Calling onClose')
+      onClose();
     } catch (err) {
       console.error('Lookup error:', err);
       setError('Feil ved oppslag. Sjekk nettverksforbindelsen.');
+      // Allow retry on error
+      scanLockRef.current = false;
     } finally {
       setIsLoading(false);
     }
@@ -64,7 +73,7 @@ export function BarcodeScanner({
 
   // Handle camera scanning
   const initializeScanner = () => {
-    console.log('Initializing scanner...');
+    console.log('🎥 Initializing camera scanner for Initial Sync...');
     
     if (scannerRef.current) {
       console.log('Clearing existing scanner');
@@ -76,13 +85,13 @@ export function BarcodeScanner({
       {
         fps: 15, // Higher FPS for better scanning with zoom
         qrbox: function(viewfinderWidth, viewfinderHeight) {
-          // Larger qrbox for better camera view like first picture
-          const minEdgePercentage = 0.7; // 70% of the smaller dimension for larger view
+          // Maximum qrbox for largest possible camera view
+          const minEdgePercentage = 0.9; // 90% of the smaller dimension for maximum view
           const minEdgeSize = Math.min(viewfinderWidth, viewfinderHeight);
           const qrboxSize = Math.floor(minEdgeSize * minEdgePercentage);
           return {
-            width: Math.max(qrboxSize, 300), // Minimum 300px for larger scanning area
-            height: Math.max(qrboxSize, 300),
+            width: Math.max(qrboxSize, 400), // Minimum 400px for very large scanning area
+            height: Math.max(qrboxSize, 400),
           };
         },
         supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
@@ -108,19 +117,18 @@ export function BarcodeScanner({
           facingMode: "environment", // Use back camera if available
           width: { ideal: 1920, min: 1280 }, // Higher resolution for better zoom
           height: { ideal: 1080, min: 720 },
-          advanced: [
-            { focusMode: "continuous" },
-            { zoom: { ideal: 2.0 } } // Optional zoom, no minimum requirement
-          ]
+          // Remove advanced constraints that cause TypeScript errors
         },
       },
       true // verbose - enable for debugging
     );
 
+    console.log('🔧 Setting up camera scanner callbacks...');
     scanner.render(
       (decodedText) => {
         // Suksess - kode skannet
-        console.log('QR/Barcode scanned successfully:', decodedText);
+        console.log('📷 Camera scanned code:', decodedText);
+        console.log('📞 About to call lookupCode from camera');
         lookupCode(decodedText);
       },
       (errorMessage) => {
@@ -221,13 +229,14 @@ export function BarcodeScanner({
       scannerRef.current.clear();
       scannerRef.current = null;
     }
+    scanLockRef.current = false;
     setError(null);
     setManualCode('');
     onClose();
   };
 
   return (
-    <Modal open={isOpen} onClose={handleClose} title={title} size="xl">
+    <Modal open={isOpen} onClose={handleClose} title={title} size="full">
       <div className="space-y-4">
         <p className="text-sm text-gray-600">{description}</p>
 
@@ -276,7 +285,7 @@ export function BarcodeScanner({
             <div 
               id={scannerElementId} 
               className="w-full"
-              style={{ minHeight: '450px' }}
+              style={{ minHeight: '600px' }}
             />
             <p className="text-xs text-gray-500 text-center">
               Støtter både QR-koder og tradisjonelle strekkoder (EAN, Code 128, etc.)

@@ -10,6 +10,7 @@ export const GET = requireAuth(async (req: NextRequest) => {
     const locationId = searchParams.get('locationId')
     const lowStock = searchParams.get('lowStock') === 'true'
     const expiringSoon = searchParams.get('expiringSoon') === 'true'
+    const search = searchParams.get('search')
     
     const where: any = {
       quantity: { gt: 0 }, // Only show items with stock
@@ -30,6 +31,16 @@ export const GET = requireAuth(async (req: NextRequest) => {
         lte: thirtyDaysFromNow,
         not: null,
       }
+    }
+
+    // Add search functionality
+    if (search) {
+      where.OR = [
+        { item: { name: { contains: search, mode: 'insensitive' } } },
+        { item: { sku: { contains: search, mode: 'insensitive' } } },
+        { location: { name: { contains: search, mode: 'insensitive' } } },
+        { lotNumber: { contains: search, mode: 'insensitive' } }
+      ]
     }
     
     const page = parseInt(searchParams.get('page') || '1')
@@ -80,10 +91,18 @@ export const GET = requireAuth(async (req: NextRequest) => {
               id: true,
               sku: true,
               name: true,
+              barcode: true,
               category: { select: { name: true } },
               minStock: true,
               expiryTracking: true,
               hazardous: true,
+              barcodes: {
+                select: {
+                  barcode: true,
+                  type: true,
+                  isPrimary: true
+                }
+              }
             }
           },
           location: {
@@ -135,10 +154,18 @@ export const GET = requireAuth(async (req: NextRequest) => {
               id: true,
               sku: true,
               name: true,
+              barcode: true,
               category: { select: { name: true } },
               minStock: true,
               expiryTracking: true,
               hazardous: true,
+              barcodes: {
+                select: {
+                  barcode: true,
+                  type: true,
+                  isPrimary: true
+                }
+              }
             }
           },
           location: {

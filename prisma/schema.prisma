@@ -634,6 +634,9 @@ model CycleCountingSession {
   name            String         // F.eks. "Månedstelling Januar 2025 - Hovedlager"
   description     String?        @db.Text
   status          CountingStatus @default(PLANNED)
+  isBlind         Boolean        @default(false) // Skjul systemQuantity for tellere
+  recountThresholdPercent Int    @default(10)    // Terskel for obligatorisk omtelling
+  requireRecountAboveThreshold Boolean @default(true)
   
   // Scope - hvilke varer skal telles
   locationId      String?
@@ -689,6 +692,12 @@ model CycleCountingLine {
   systemQuantity  Int                 // Forventet antall (fra system)
   countedQuantity Int?                // Faktisk talt antall
   discrepancy     Int                 @default(0)  // Differanse (counted - system)
+  needsRecount    Boolean             @default(false)
+  scannedGtin     String?
+  scannedLotNumber String?
+  scannedExpiryDate DateTime?
+  lotMismatch     Boolean             @default(false)
+  reasonCode      String?
   
   notes           String?             @db.Text     // F.eks. "Fant 2 ødelagte flasker"
   

@@ -4,9 +4,7 @@ import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
 import { Card, CardContent } from '@/components/ui/card'
 import { useToast } from '@/components/ui/toast'
-import { BarcodeScanner } from '@/components/ui/barcode-scanner'
-import { Plus, Trash2, Package, AlertTriangle, Calendar, Hash, Split, Scan, Zap } from 'lucide-react'
-import { ScanResult } from '@/app/api/scan-lookup/route'
+import { Plus, Trash2, Package, AlertTriangle, Calendar, Hash, Split, Zap } from 'lucide-react'
 import { parseGS1Code, formatGS1Data } from '@/lib/gs1-parser'
 
 type ReceiptLine = {
@@ -21,7 +19,7 @@ type ReceiptLine = {
   }
   locationId: string
   location?: { name: string }
-  quantity: number
+  quantity: number | ''
   lotNumber?: string
   expiryDate?: string
 }
@@ -50,12 +48,14 @@ interface ReceiptFormProps {
   onClose: () => void
   onSave: () => void
   orderId?: string
+  prefilledItem?: Item | null
+  prefilledGS1Data?: any
 }
 
-export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormProps) {
+export function ReceiptForm({ isOpen, onClose, onSave, orderId, prefilledItem, prefilledGS1Data }: ReceiptFormProps) {
   const [formData, setFormData] = useState<FormData>({
     orderId,
-    receivedBy: 'System User',
+    receivedBy: '',
     receivedAt: new Date().toISOString().split('T')[0],
     notes: '',
     lines: []
@@ -64,22 +64,62 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
   const [items, setItems] = useState<Item[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [loading, setLoading] = useState(false)
-  const [scannerOpen, setScannerOpen] = useState(false)
-  const [currentLineIndex, setCurrentLineIndex] = useState<number | null>(null)
+  const [currentUser, setCurrentUser] = useState<{id: string, name: string} | null>(null)
   const { showToast } = useToast()
 
-  // Load reference data
+  // Load reference data and set current user as receivedBy
   useEffect(() => {
     Promise.all([
       fetch('/api/items?limit=1000').then(r => r.json()),
-      fetch('/api/locations').then(r => r.json())
-    ]).then(([itemsResponse, locs]) => {
+      fetch('/api/locations').then(r => r.json()),
+      fetch('/api/auth/me', { credentials: 'include' }).then(r => r.json())
+    ]).then(([itemsResponse, locs, user]) => {
       setItems(itemsResponse.items || itemsResponse)
       setLocations(locs)
+      
+      // Set current logged-in user as receivedBy
+      const me = user?.user
+      if (me && me.id && me.name) {
+        setCurrentUser({ id: me.id, name: me.name })
+        setFormData(prev => ({
+          ...prev,
+          receivedBy: me.id
+        }))
+      } else {
+        // Fallback: Show that no user is logged in
+        setCurrentUser({ id: '', name: 'Ikke innlogget - logg inn først' })
+        setFormData(prev => ({
+          ...prev,
+          receivedBy: '' // Clear receivedBy when not logged in
+        }))
+      }
     }).catch(() => {
       showToast('error', 'Kunne ikke laste referansedata')
     })
   }, [])
+
+  // Handle prefilled item
+  useEffect(() => {
+    if (prefilledItem && isOpen) {
+      // Extract GS1 data if available
+      const autoLot = prefilledGS1Data?.lotNumber || '';
+      const autoExpiry = prefilledGS1Data?.expiryDate ? new Date(prefilledGS1Data.expiryDate).toLocaleDateString('en-CA') : '';
+      
+      const newLine: ReceiptLine = {
+        itemId: prefilledItem.id,
+        item: prefilledItem,
+        locationId: prefilledItem.defaultLocationId || '',
+        quantity: 1,
+        lotNumber: autoLot,
+        expiryDate: autoExpiry
+      }
+      
+      setFormData(prev => ({
+        ...prev,
+        lines: [newLine]
+      }))
+    }
+  }, [prefilledItem, prefilledGS1Data, isOpen])
 
   // Load order details if orderId provided
   useEffect(() => {
@@ -157,10 +197,11 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
 
   function splitLine(index: number) {
     const line = formData.lines[index]
-    if (line.quantity <= 1) return
+    const qty = typeof line.quantity === 'number' ? line.quantity : 0
+    if (qty <= 1) return
     
-    const splitQuantity = Math.floor(line.quantity / 2)
-    const remainingQuantity = line.quantity - splitQuantity
+    const splitQuantity = Math.floor(qty / 2)
+    const remainingQuantity = qty - splitQuantity
     
     setFormData(prev => ({
       ...prev,
@@ -173,76 +214,6 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
     }))
   }
 
-  const handleScanSuccess = (result: ScanResult) => {
-    if (result.type === 'ITEM') {
-      const item = result.data;
-      
-      // Extract GS1 data if available
-      const gs1Data = result.gs1Data;
-      const autoLot = gs1Data?.lotNumber || '';
-      const autoExpiry = gs1Data?.expiryDate ? gs1Data.expiryDate.toISOString().split('T')[0] : '';
-      
-      if (currentLineIndex !== null) {
-        // Update existing line
-        updateLine(currentLineIndex, 'itemId', item.id);
-        
-        // Auto-fill GS1 data if available
-        if (autoLot) {
-          updateLine(currentLineIndex, 'lotNumber', autoLot);
-        }
-        if (autoExpiry) {
-          updateLine(currentLineIndex, 'expiryDate', autoExpiry);
-        }
-      } else {
-        // Add new line with scanned item and GS1 data
-        const newLine: ReceiptLine = {
-          itemId: item.id,
-          locationId: item.defaultLocationId || '',
-          quantity: 1,
-          lotNumber: autoLot,
-          expiryDate: autoExpiry
-        };
-        
-        setFormData(prev => ({
-          ...prev,
-          lines: [...prev.lines, newLine]
-        }));
-      }
-      
-      // Show success message with GS1 info
-      let message = `Vare lagt til: ${item.name}`;
-      if (gs1Data?.isGS1) {
-        const gs1Info = [];
-        if (autoLot) gs1Info.push(`Lot: ${autoLot}`);
-        if (autoExpiry) gs1Info.push(`Utløper: ${new Date(autoExpiry).toLocaleDateString('nb-NO')}`);
-        if (gs1Info.length > 0) {
-          message += ` (${gs1Info.join(', ')})`;
-        }
-      }
-      showToast('success', message);
-      setCurrentLineIndex(null);
-    } else if (result.type === 'LOCATION') {
-      if (currentLineIndex !== null) {
-        updateLine(currentLineIndex, 'locationId', result.data.id);
-        showToast('success', `Lokasjon valgt: ${result.data.name}`);
-        setCurrentLineIndex(null);
-      }
-    } else if (result.type === 'SSCC_ERROR') {
-      showToast('error', result.message || 'Dette er en logistikk-kode. Skann produktkoden i stedet.');
-    } else {
-      showToast('error', result.message || 'Ukjent kode');
-    }
-  }
-
-  const openScannerForLine = (lineIndex: number) => {
-    setCurrentLineIndex(lineIndex);
-    setScannerOpen(true);
-  }
-
-  const openScannerForNewItem = () => {
-    setCurrentLineIndex(null);
-    setScannerOpen(true);
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -256,7 +227,7 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
     for (let i = 0; i < formData.lines.length; i++) {
       const line = formData.lines[i]
       
-      if (!line.itemId || !line.locationId || line.quantity <= 0) {
+      if (!line.itemId || !line.locationId || !line.quantity || line.quantity <= 0) {
         showToast('error', `Linje ${i + 1}: Vare, lokasjon og antall må fylles ut`)
         return
       }
@@ -332,10 +303,9 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
           <div>
             <label className="block text-sm font-medium mb-2">Mottatt av</label>
             <Input
-              value={formData.receivedBy}
-              onChange={(e) => setFormData(prev => ({ ...prev, receivedBy: e.target.value }))}
-              placeholder="Ditt navn"
-              required
+              value={currentUser?.name || 'Laster...'}
+              disabled
+              className="bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
             />
           </div>
         </div>
@@ -345,13 +315,9 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
           <div className="flex items-center justify-between mb-4">
             <h4 className="text-sm font-semibold">Mottatte varer</h4>
             <div className="flex space-x-2">
-              <Button type="button" variant="outline" size="sm" onClick={openScannerForNewItem}>
-                <Scan className="w-4 h-4 mr-1" />
-                Skann vare
-              </Button>
               <Button type="button" variant="outline" size="sm" onClick={addLine}>
                 <Plus className="w-4 h-4 mr-1" />
-                Legg til manuelt
+                Legg til vare
               </Button>
             </div>
           </div>
@@ -362,13 +328,9 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
                 <Package className="w-8 h-8 text-gray-400 mb-2" />
                 <p className="text-sm text-gray-500">Ingen varer lagt til ennå</p>
                 <div className="flex space-x-2 mt-3">
-                  <Button type="button" variant="outline" size="sm" onClick={openScannerForNewItem}>
-                    <Scan className="w-4 h-4 mr-1" />
-                    Skann vare
-                  </Button>
                   <Button type="button" variant="outline" size="sm" onClick={addLine}>
                     <Plus className="w-4 h-4 mr-1" />
-                    Legg til manuelt
+                    Legg til vare
                   </Button>
                 </div>
               </CardContent>
@@ -424,8 +386,11 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
                           <Input
                             type="number"
                             className="text-sm"
-                            value={line.quantity}
-                            onChange={(e) => updateLine(index, 'quantity', Number(e.target.value))}
+                            value={line.quantity || ''}
+                            onChange={(e) => {
+                              const value = e.target.value
+                              updateLine(index, 'quantity', value === '' ? '' : Number(value))
+                            }}
                             min="1"
                             required
                           />
@@ -508,7 +473,7 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
                           </div>
                         )}
                         <div className="flex items-center gap-1">
-                          {line.quantity > 1 && (
+                          {(typeof line.quantity === 'number' && line.quantity > 1) && (
                             <Button
                               type="button"
                               variant="outline"
@@ -575,18 +540,6 @@ export function ReceiptForm({ isOpen, onClose, onSave, orderId }: ReceiptFormPro
           </Button>
         </div>
       </form>
-
-      {/* Barcode Scanner for Receipt Items */}
-      <BarcodeScanner
-        isOpen={scannerOpen}
-        onClose={() => {
-          setScannerOpen(false);
-          setCurrentLineIndex(null);
-        }}
-        onScanSuccess={handleScanSuccess}
-        title="Skann vare eller lokasjon"
-        description="Skann leverandørens strekkode eller QR-kode for lokasjon"
-      />
     </Modal>
   )
 }

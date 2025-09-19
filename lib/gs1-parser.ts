@@ -30,7 +30,7 @@ const AI_DEFINITIONS: Record<string, {
   format?: 'numeric' | 'alphanumeric' | 'date'
 }> = {
   '00': { name: 'SSCC', fixedLength: 18, format: 'numeric' },
-  '01': { name: 'GTIN', fixedLength: 14, format: 'numeric' },
+  '01': { name: 'GTIN', variableLength: { min: 8, max: 14 }, format: 'numeric' },
   '10': { name: 'Lot/Batch', variableLength: { min: 1, max: 20 }, format: 'alphanumeric' },
   '17': { name: 'Expiry Date', fixedLength: 6, format: 'date' },
   '21': { name: 'Serial Number', variableLength: { min: 1, max: 20 }, format: 'alphanumeric' },
@@ -64,8 +64,14 @@ function parseGS1Date(yymmdd: string): Date | null {
   // Håndter år: 00-49 = 2000-2049, 50-99 = 1950-1999
   const year = yy <= 49 ? 2000 + yy : 1900 + yy
   
-  // Valider dato
-  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null
+  // Valider dato - tillat dd = 00 (tolkes som siste dag i måneden)
+  if (mm < 1 || mm > 12 || dd < 0 || dd > 31) return null
+  
+  // Hvis dag er 00, bruk siste dag i måneden
+  if (dd === 0) {
+    const lastDay = new Date(year, mm, 0).getDate() // Siste dag i måneden
+    return new Date(year, mm - 1, lastDay)
+  }
   
   return new Date(year, mm - 1, dd) // JavaScript Date bruker 0-baserte måneder
 }
@@ -96,6 +102,8 @@ export function parseGS1Code(code: string): GS1ParsedData {
   // Parse AI-er og data
   let position = 0
   
+  // console.log('🔍 Parsing GS1 code:', cleanCode)
+  
   while (position < cleanCode.length) {
     // Finn neste AI (2-4 siffer)
     let aiMatch: RegExpMatchArray | null = null
@@ -107,16 +115,26 @@ export function parseGS1Code(code: string): GS1ParsedData {
         position += aiMatch[0].length // Hopp over (AI)
       }
     } else {
-      // Prøv direkte AI-format: 01
-      aiMatch = cleanCode.substring(position).match(/^(\d{2,4})/)
-      if (aiMatch) {
-        position += aiMatch[1].length // Hopp over AI
+      // Prøv direkte AI-format: 01, 17, 10 etc.
+      // Prøv først 2-sifret AI (mest vanlig)
+      const twoDigitMatch = cleanCode.substring(position).match(/^(\d{2})/)
+      if (twoDigitMatch && AI_DEFINITIONS[twoDigitMatch[1]]) {
+        aiMatch = twoDigitMatch
+        position += 2 // Hopp over AI
+      } else {
+        // Prøv 3-4 sifret AI
+        const multiDigitMatch = cleanCode.substring(position).match(/^(\d{3,4})/)
+        if (multiDigitMatch && AI_DEFINITIONS[multiDigitMatch[1]]) {
+          aiMatch = multiDigitMatch
+          position += multiDigitMatch[1].length // Hopp over AI
+        }
       }
     }
     
     if (!aiMatch) break
     
     const ai = aiMatch[1]
+    // console.log(`🏷️ Found AI: ${ai} at position ${position}`)
     const aiDef = AI_DEFINITIONS[ai]
     
     if (!aiDef) {
@@ -137,16 +155,46 @@ export function parseGS1Code(code: string): GS1ParsedData {
     } else if (aiDef.variableLength) {
       // Variabel lengde - finn neste AI eller slutt på streng
       const remainingCode = cleanCode.substring(position)
-      const nextAiMatch = remainingCode.match(/\((\d{2,4})\)|(\d{2,4})(?=\d)/)
+      // console.log(`🔍 Looking for next AI in: "${remainingCode}"`)
       
-      if (nextAiMatch && nextAiMatch.index !== undefined) {
-        data = remainingCode.substring(0, nextAiMatch.index)
+      // Look for next AI pattern - handle both parentheses and raw format
+      let nextAiIndex = -1
+      for (let i = aiDef.variableLength.min; i < Math.min(remainingCode.length, aiDef.variableLength.max + 1); i++) {
+        const substr = remainingCode.substring(i)
+        
+        // Check for parentheses format: (XX)
+        const parenMatch = substr.match(/^\((\d{2,4})\)/)
+        if (parenMatch) {
+          const potentialAi = parenMatch[1]
+          if (AI_DEFINITIONS[potentialAi]) {
+            nextAiIndex = i
+            // console.log(`🎯 Found next AI "${potentialAi}" in parentheses at index ${i}`)
+            break
+          }
+        }
+        
+        // Check for raw format: XX (only if no parentheses found yet)
+        if (!parenMatch && /^(\d{2})/.test(substr)) {
+          const potentialAi = substr.substring(0, 2)
+          if (AI_DEFINITIONS[potentialAi]) {
+            nextAiIndex = i
+            // console.log(`🎯 Found next AI "${potentialAi}" in raw format at index ${i}`)
+            break
+          }
+        }
+      }
+      
+      if (nextAiIndex > 0) {
+        data = remainingCode.substring(0, nextAiIndex)
       } else {
         data = remainingCode
       }
       
+      // console.log(`📏 Variable length data: "${data}" (length: ${data.length})`)
+      
       // Valider lengde
       if (data.length < aiDef.variableLength.min || data.length > aiDef.variableLength.max) {
+        // console.log(`❌ Invalid length for AI ${ai}: ${data.length} (expected ${aiDef.variableLength.min}-${aiDef.variableLength.max})`)
         position++
         continue
       }
@@ -158,6 +206,7 @@ export function parseGS1Code(code: string): GS1ParsedData {
     }
     
     // Lagre AI og data
+    // console.log(`📦 AI ${ai}: "${data}" (length: ${data.length})`)
     result.applicationIdentifiers[ai] = data
     
     // Sett spesifikke felter basert på AI
@@ -223,6 +272,8 @@ export function formatGS1Data(parsed: GS1ParsedData): string {
  */
 export function testGS1Parser() {
   const testCodes = [
+    '(01)5032384029433(17)250900(10)103548', // Your exact barcode with parentheses
+    '01050323840294331725090010103548',      // Your exact barcode raw format
     '(01)12345678901234(17)261231(10)LOTABC123',
     '0112345678901234172612311LOTABC123',
     '(00)123456789012345678',

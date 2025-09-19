@@ -20,10 +20,16 @@ type InventoryLot = {
     id: string
     sku: string
     name: string
+    barcode: string | null
     category: string
     minStock: number
     expiryTracking: boolean
     hazardous: boolean
+    barcodes: Array<{
+      barcode: string
+      type: string
+      isPrimary: boolean
+    }>
   }
   location: {
     id: string
@@ -35,6 +41,7 @@ type InventoryLot = {
 export default function InventoryPage() {
   const [inventory, setInventory] = useState<InventoryLot[]>([])
   const [allInventory, setAllInventory] = useState<InventoryLot[]>([]) // For accurate statistics
+  const [lowStockCountFromAlerts, setLowStockCountFromAlerts] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [filter, setFilter] = useState<'all' | 'lowStock' | 'expiring'>('all')
@@ -50,12 +57,8 @@ export default function InventoryPage() {
   })
   const { showToast } = useToast()
 
-  const filteredInventory = inventory.filter(lot => 
-    lot.item.name.toLowerCase().includes(search.toLowerCase()) ||
-    lot.item.sku.toLowerCase().includes(search.toLowerCase()) ||
-    lot.location.name.toLowerCase().includes(search.toLowerCase()) ||
-    lot.lotNumber?.toLowerCase().includes(search.toLowerCase())
-  )
+  // Use inventory directly since filtering is now done server-side
+  const filteredInventory = inventory
 
   // Calculate total units (quantity) on current page
   const totalUnitsOnPage = filteredInventory.reduce((sum, lot) => sum + lot.quantity, 0)
@@ -67,6 +70,7 @@ export default function InventoryPage() {
       const params = new URLSearchParams()
       if (filter === 'lowStock') params.set('lowStock', 'true')
       if (filter === 'expiring') params.set('expiringSoon', 'true')
+      if (search.trim()) params.set('search', search.trim())
       params.set('page', pagination.page.toString())
       params.set('limit', pagination.limit.toString())
       
@@ -85,12 +89,39 @@ export default function InventoryPage() {
       const allLotsData = await allLotsRes.json()
       const allLots = allLotsData.lots || allLotsData
       setAllInventory(Array.isArray(allLots) ? allLots : [])
+
+      // Fetch low stock count from alerts endpoint to include items with zero inventory
+      try {
+        const alertsRes = await fetch('/api/alerts', { cache: 'no-store' })
+        if (alertsRes.ok) {
+          const alerts = await alertsRes.json()
+          setLowStockCountFromAlerts(Array.isArray(alerts.lowStock) ? alerts.lowStock.length : null)
+        } else {
+          setLowStockCountFromAlerts(null)
+        }
+      } catch {
+        setLowStockCountFromAlerts(null)
+      }
     } catch {
       showToast('error', 'Kunne ikke laste lagerstatus')
     } finally {
       setLoading(false)
     }
   }
+
+  // Debounced search effect
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      // Reset to page 1 when search changes
+      if (pagination.page !== 1) {
+        setPagination(prev => ({ ...prev, page: 1 }))
+      } else {
+        load()
+      }
+    }, 300) // 300ms debounce
+
+    return () => clearTimeout(timeoutId)
+  }, [search])
 
   useEffect(() => { load() }, [filter, pagination.page])
   
@@ -163,7 +194,7 @@ export default function InventoryPage() {
   // Antall VARER (ikke lots) med lav total beholdning
   // Konsistent med dashboard: onHand <= minStock
   const lowStockItems = Array.from(itemStockMap.entries()).filter(([_, stock]) => stock.total <= stock.minStock)
-  const lowStockCount = lowStockItems.length
+  const lowStockCount = lowStockCountFromAlerts ?? lowStockItems.length
   const expiringCount = inventory.filter(isExpiringSoon).length
 
   return (
@@ -290,6 +321,7 @@ export default function InventoryPage() {
                     <TableHeader>
                       <TableRow className="bg-gray-50/50 dark:bg-gray-800/50">
                         <TableHead className="font-semibold">Vare</TableHead>
+                        <TableHead className="font-semibold">Strekkode</TableHead>
                         <TableHead className="font-semibold">Lokasjon</TableHead>
                         <TableHead className="font-semibold">Beholdning</TableHead>
                         <TableHead className="font-semibold">Lot/Batch</TableHead>
@@ -311,6 +343,34 @@ export default function InventoryPage() {
                             <div className="space-y-1">
                               <div className="font-medium">{lot.item.name}</div>
                               <div className="text-xs text-gray-500 font-mono">{lot.item.sku}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              {lot.item.barcode && (
+                                <div className="text-xs font-mono text-gray-700 dark:text-gray-300">
+                                  {lot.item.barcode}
+                                </div>
+                              )}
+                              {lot.item.barcodes && lot.item.barcodes.length > 0 && (
+                                <div className="space-y-1">
+                                  {lot.item.barcodes.map((bc, idx) => (
+                                    <div key={idx} className="flex items-center gap-1">
+                                      <span className="text-xs font-mono text-gray-700 dark:text-gray-300">
+                                        {bc.barcode}
+                                      </span>
+                                      {bc.isPrimary && (
+                                        <span className="text-xs px-1 py-0.5 bg-blue-100 text-blue-700 rounded">
+                                          Primær
+                                        </span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {!lot.item.barcode && (!lot.item.barcodes || lot.item.barcodes.length === 0) && (
+                                <span className="text-xs text-gray-400 italic">Ingen strekkode</span>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell>

@@ -9,7 +9,11 @@ const createCountingSessionSchema = z.object({
   categoryId: z.string().optional(),
   departmentId: z.string().optional(),
   plannedDate: z.string().transform(str => new Date(str)),
-  plannedBy: z.string() // I ekte app: fra session
+  plannedBy: z.string(), // I ekte app: fra session
+  // Improvements
+  isBlind: z.boolean().optional().default(false),
+  recountThresholdPercent: z.number().int().min(0).max(100).optional().default(10),
+  requireRecountAboveThreshold: z.boolean().optional().default(true)
 })
 
 export async function POST(req: Request) {

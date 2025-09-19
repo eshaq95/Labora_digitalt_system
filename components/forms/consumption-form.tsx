@@ -30,7 +30,7 @@ type Props = {
 }
 
 export function ConsumptionForm({ lot, open, onClose, onSuccess }: Props) {
-  const [quantity, setQuantity] = useState<number>(1)
+  const [quantity, setQuantity] = useState<number | ''>(1)
   const [reasonCode, setReasonCode] = useState<string>('ANALYSIS')
   const [notes, setNotes] = useState<string>('')
   const [userId] = useState<string>('cm4gvr9sg0001i6yp0g2q8ey5') // I ekte app: fra session
@@ -51,12 +51,12 @@ export function ConsumptionForm({ lot, open, onClose, onSuccess }: Props) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (quantity > lot.quantity) {
+    if (quantity !== '' && quantity > lot.quantity) {
       showToast('error', 'Ikke nok på lager')
       return
     }
 
-    if (quantity <= 0) {
+    if (quantity === '' || quantity <= 0) {
       showToast('error', 'Antall må være større enn 0')
       return
     }
@@ -70,7 +70,7 @@ export function ConsumptionForm({ lot, open, onClose, onSuccess }: Props) {
         credentials: 'include',
         body: JSON.stringify({
           inventoryLotId: lot.id,
-          quantity,
+          quantity: typeof quantity === 'number' ? quantity : 0,
           reasonCode,
           notes,
           userId
@@ -152,8 +152,11 @@ export function ConsumptionForm({ lot, open, onClose, onSuccess }: Props) {
               type="number"
               min="1"
               max={lot.quantity}
-              value={quantity}
-              onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+              value={quantity === '' ? '' : quantity}
+              onChange={(e) => {
+                const v = e.target.value
+                setQuantity(v === '' ? '' : Number(v))
+              }}
               className="pr-16"
               required
             />

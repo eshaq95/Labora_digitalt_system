@@ -35,7 +35,7 @@ const QuickConsumptionModal = dynamic(() => import('@/components/inventory/quick
   ),
   ssr: false
 })
-import { Package, Truck, Warehouse, ClipboardList, Receipt, Menu, X, Sparkles, BarChart3, Calculator, Scan, Camera, Search } from 'lucide-react'
+import { Package, Truck, Warehouse, ClipboardList, Receipt, Menu, X, LayoutDashboard, BarChart3, Calculator, Scan, Camera, Search } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ScanResult } from '@/app/api/scan-lookup/route'
 import GlobalSearchModal from '@/components/ui/global-search-modal'
@@ -46,7 +46,7 @@ const sidebarNavigation = [
   {
     title: 'Oversikt',
     items: [
-      { href: '/', label: 'Dashboard', icon: Sparkles }
+      { href: '/', label: 'Dashboard', icon: LayoutDashboard }
     ]
   },
   {
@@ -82,7 +82,7 @@ const getItemCount = (href: string, counts: { pendingOrders: number; pendingCoun
     case '/cycle-counting':
       return counts.pendingCounts
     case '/inventory':
-      return counts.lowStock > 0 ? counts.lowStock : undefined
+      return undefined // Removed the 99+ indicator for Lagerstatus
     default:
       return undefined
   }
@@ -131,9 +131,14 @@ function AppContent({ Component, pageProps }: AppProps) {
       // For locations, navigate to inventory with location filter
       router.push(`/inventory?location=${result.data.id}`)
     }
+    
+    // Refresh counts after scan (inventory might have changed)
+    setTimeout(fetchCounts, 1000)
   }
 
   const handleQuickConsumptionSuccess = () => {
+    // Refresh counts after consumption (inventory changed)
+    fetchCounts()
     // Refresh current page data if needed
     router.reload()
   }
@@ -187,16 +192,22 @@ function AppContent({ Component, pageProps }: AppProps) {
   // Fetch counts when user is authenticated (with delay to avoid duplicate calls)
   useEffect(() => {
     if (user) {
-      // Delay initial fetch to avoid conflict with dashboard page
-      const initialTimeout = setTimeout(fetchCounts, 1000)
+      // Initial fetch immediately
+      fetchCounts()
       // Refresh counts every 30 seconds
       const interval = setInterval(fetchCounts, 30000)
       return () => {
-        clearTimeout(initialTimeout)
         clearInterval(interval)
       }
     }
   }, [user])
+
+  // Refresh counts when navigating to certain pages
+  useEffect(() => {
+    if (user && (router.pathname === '/inventory' || router.pathname === '/initial-sync')) {
+      fetchCounts()
+    }
+  }, [router.pathname, user])
 
   // Global search keyboard shortcut (Cmd/Ctrl-K)
   useEffect(() => {
@@ -346,15 +357,15 @@ function AppContent({ Component, pageProps }: AppProps) {
               <Menu className="h-5 w-5" />
             </button>
 
-            {/* Center - Global Search */}
+            {/* Center - Global Search - Neutral styling */}
             <div className="flex-1 max-w-md mx-8">
               <button
                 onClick={() => setSearchOpen(true)}
-                className="w-full flex items-center gap-3 px-4 py-2 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors duration-150 text-sm border border-slate-200 dark:border-slate-700"
+                className="w-full flex items-center gap-3 px-4 py-2 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors duration-150 text-sm border border-slate-200 dark:border-slate-700"
               >
                 <Search className="w-4 h-4" />
                 <span className="flex-1 text-left">Søk i varer, bestillinger, leverandører...</span>
-                <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded">
+                <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded">
                   <span>⌘</span>K
                 </kbd>
               </button>
@@ -406,14 +417,16 @@ function AppContent({ Component, pageProps }: AppProps) {
         />
       )}
 
-      {/* Global Scan & Go Modals */}
-      <BarcodeScanner
-        isOpen={scannerOpen}
-        onClose={() => setScannerOpen(false)}
-        onScanSuccess={handleScanSuccess}
-        title="🚀 Scan & Go - Hurtiguttak"
-        description="Skann strekkode, QR-kode eller Data Matrix med høy zoom for rask vareuttak"
-      />
+      {/* Global Scan & Go Modals - Only show when not on Initial Sync page */}
+      {router.pathname !== '/initial-sync' && (
+        <BarcodeScanner
+          isOpen={scannerOpen}
+          onClose={() => setScannerOpen(false)}
+          onScanSuccess={handleScanSuccess}
+          title="🚀 Scan & Go - Hurtiguttak"
+          description="Skann strekkode, QR-kode eller Data Matrix med høy zoom for rask vareuttak"
+        />
+      )}
 
       <QuickConsumptionModal
         isOpen={quickConsumptionOpen}

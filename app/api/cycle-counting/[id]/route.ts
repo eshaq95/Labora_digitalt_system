@@ -4,9 +4,14 @@ import { z } from 'zod'
 // Schema for å oppdatere telling
 const updateCountingSchema = z.object({
   lines: z.array(z.object({
-    id: z.string(),
+    id: z.string().optional(),
+    inventoryLotId: z.string().optional(), // for ad-hoc funn
     countedQuantity: z.number().int().min(0),
-    notes: z.string().optional()
+    notes: z.string().optional(),
+    // optional scanned verification
+    scannedGtin: z.string().optional(),
+    scannedLotNumber: z.string().optional(),
+    scannedExpiryDate: z.string().optional(),
   })),
   countedBy: z.string(), // I ekte app: fra session
   status: z.enum(['IN_PROGRESS', 'COMPLETED']).optional()
@@ -88,24 +93,45 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       const updatedLines: any[] = []
       let discrepancies = 0
 
+      // Fetch session for blind settings and threshold
+      const sessionForCalc = await tx.cycleCountingSession.findUnique({ where: { id } })
+
       for (const lineUpdate of lines) {
-        const line = await tx.cycleCountingLine.findUnique({
-          where: { id: lineUpdate.id }
-        })
+        let line = lineUpdate.id ? await tx.cycleCountingLine.findUnique({ where: { id: lineUpdate.id } }) : null
+
+        // Ad-hoc found item: create a new line when only inventoryLotId provided
+        if (!line && lineUpdate.inventoryLotId) {
+          const lot = await tx.inventoryLot.findUnique({ where: { id: lineUpdate.inventoryLotId } })
+          if (!lot) continue
+          line = await tx.cycleCountingLine.create({
+            data: {
+              sessionId: id,
+              inventoryLotId: lot.id,
+              systemQuantity: lot.quantity
+            }
+          })
+        }
 
         if (!line) continue
 
         const discrepancy = lineUpdate.countedQuantity - line.systemQuantity
         if (discrepancy !== 0) discrepancies++
 
+        // Threshold-based recount flag
+        const needsRecount = !!(sessionForCalc?.requireRecountAboveThreshold && sessionForCalc?.recountThresholdPercent !== undefined && line.systemQuantity > 0 && Math.abs(discrepancy) / line.systemQuantity * 100 >= (sessionForCalc.recountThresholdPercent))
+
         const updatedLine = await tx.cycleCountingLine.update({
-          where: { id: lineUpdate.id },
+          where: { id: line.id },
           data: {
             countedQuantity: lineUpdate.countedQuantity,
             discrepancy,
             notes: lineUpdate.notes,
             countedAt: new Date(),
-            countedBy
+            countedBy,
+            needsRecount,
+            scannedGtin: lineUpdate.scannedGtin,
+            scannedLotNumber: lineUpdate.scannedLotNumber,
+            scannedExpiryDate: lineUpdate.scannedExpiryDate ? new Date(lineUpdate.scannedExpiryDate) : undefined
           }
         })
 

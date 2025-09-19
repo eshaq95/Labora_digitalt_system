@@ -56,7 +56,7 @@ export function QuickConsumptionModal({
   scanResult, 
   onSuccess 
 }: QuickConsumptionModalProps) {
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState<number | ''>(1);
   const [reason, setReason] = useState('ANALYSIS');
   const [notes, setNotes] = useState('');
   const [selectedLot, setSelectedLot] = useState<InventoryLot | null>(null);
@@ -112,7 +112,7 @@ export function QuickConsumptionModal({
       return;
     }
 
-    if (quantity <= 0 || quantity > selectedLot.quantity) {
+    if (quantity === '' || quantity <= 0 || quantity > selectedLot.quantity) {
       showToast('error', `Ugyldig mengde. Tilgjengelig: ${selectedLot.quantity}`);
       return;
     }
@@ -128,7 +128,7 @@ export function QuickConsumptionModal({
         credentials: 'include', // Include cookies for authentication
         body: JSON.stringify({
           lotId: selectedLot.id,
-          quantity: quantity,
+          quantity: typeof quantity === 'number' ? quantity : 0,
           reason: reason,
           notes: notes || `Hurtiguttak via skanning`
         }),
@@ -144,7 +144,8 @@ export function QuickConsumptionModal({
 
       const result = await response.json();
       
-      showToast('success', `✅ ${quantity} ${getItemData()?.unit || 'stk'} registrert som uttak`);
+      const qty = typeof quantity === 'number' ? quantity : 0;
+      showToast('success', `✅ ${qty} ${getItemData()?.unit || 'stk'} registrert som uttak`);
       
       if (onSuccess) {
         onSuccess();
@@ -337,15 +338,16 @@ export function QuickConsumptionModal({
               type="number"
               min="1"
               max={selectedLot?.quantity || 1}
-              value={quantity}
-              onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+              value={quantity === '' ? '' : quantity}
+              onChange={(e) => {
+                const v = e.target.value
+                setQuantity(v === '' ? '' : Number(v))
+              }}
               className="w-24"
               autoFocus
             />
             <span className="text-sm text-gray-600">{itemData.unit}</span>
-            <span className="text-xs text-gray-500">
-              (Maks: {selectedLot?.quantity || 0})
-            </span>
+            <span className="text-xs text-gray-500">(Maks: {selectedLot?.quantity || 0})</span>
           </div>
         </div>
 
