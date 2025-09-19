@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Labora-Digit
 
 A comprehensive warehouse management system designed specifically for laboratory environments, featuring advanced inventory tracking, GS1 barcode support, and professional-grade audit trails.
