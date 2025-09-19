@@ -1,12 +1,23 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-middleware'
 import { NextResponse } from 'next/server'
+import { paginationSchema, createItemSchema, validateRequest } from '@/lib/validation-schemas'
 
 export const GET = requireAuth(async (req) => {
   try {
     const { searchParams } = new URL(req.url)
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '50')
+    
+    // Validate pagination parameters
+    const paginationResult = validateRequest(paginationSchema, {
+      page: searchParams.get('page'),
+      limit: searchParams.get('limit') || '50',
+    })
+    
+    if (!paginationResult.success) {
+      return NextResponse.json({ error: paginationResult.error }, { status: 400 })
+    }
+    
+    const { page, limit } = paginationResult.data
     const search = searchParams.get('search') || ''
     const category = searchParams.get('category') || ''
     const department = searchParams.get('department') || ''
@@ -92,44 +103,33 @@ export const GET = requireAuth(async (req) => {
 export const POST = requireRole(['ADMIN', 'PURCHASER'])(async (req) => {
   try {
     const body = await req.json().catch(() => ({}))
-    const { 
-      sku, name, manufacturer, description,
-      departmentId, categoryId, 
-      unit, orderUnit, conversionFactor, contentPerPack,
-      minStock, maxStock, salesPrice, currency,
-      requiresLotNumber, expiryTracking, hazardous,
-      hmsCode, storageTemp, notes,
-      defaultLocationId
-    } = body || {}
     
-    if (!sku || !name) {
-      return NextResponse.json({ error: 'SKU og navn er påkrevd' }, { status: 400 })
+    // Validate request body
+    const validationResult = validateRequest(createItemSchema, body)
+    if (!validationResult.success) {
+      return NextResponse.json({ error: validationResult.error }, { status: 400 })
     }
+    
+    const validatedData = validationResult.data
     
     const item = await prisma.item.create({
       data: {
-        sku,
-        name,
-        manufacturer: manufacturer || null,
-        description: description || null,
-        // Fjernet category enum - bruker kun relasjoner nå
-        departmentId: departmentId || null,
-        categoryId: categoryId || null,
-        unit: unit || 'UNIT',
-        orderUnit: orderUnit || null,
-        conversionFactor: conversionFactor ? Number(conversionFactor) : null,
-        contentPerPack: contentPerPack || null,
-        minStock: Math.max(0, Number(minStock ?? 0)),
-        maxStock: maxStock ? Number(maxStock) : null,
-        salesPrice: salesPrice ? Number(salesPrice) : null,
-        currency: currency || 'NOK',
-        requiresLotNumber: Boolean(requiresLotNumber),
-        expiryTracking: Boolean(expiryTracking),
-        hazardous: Boolean(hazardous),
-        hmsCode: hmsCode || null,
-        storageTemp: storageTemp || null,
-        notes: notes || null,
-        defaultLocationId: defaultLocationId || null,
+        sku: validatedData.sku,
+        name: validatedData.name,
+        barcode: validatedData.barcode || null,
+        description: validatedData.description || null,
+        categoryId: validatedData.categoryId,
+        departmentId: validatedData.departmentId,
+        unitOfMeasure: validatedData.unitOfMeasure,
+        conversionFactor: validatedData.conversionFactor,
+        minStock: validatedData.minStock,
+        maxStock: validatedData.maxStock,
+        salesPrice: validatedData.salesPrice || null,
+        requiresLotTracking: validatedData.requiresLotTracking,
+        requiresExpiryTracking: validatedData.requiresExpiryTracking,
+        hmsCode: validatedData.hmsCode || null,
+        casNumber: validatedData.casNumber || null,
+        storageConditions: validatedData.storageConditions || null,
       },
       include: {
         defaultLocation: true,

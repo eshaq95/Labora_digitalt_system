@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { z } from 'zod';
 import { parseGS1Code, extractGTIN, isSSCCCode, formatGS1Data } from '@/lib/gs1-parser';
-
-const ScanRequestSchema = z.object({
-  scannedCode: z.string().min(1, 'Skannet kode kan ikke være tom')
-});
+import { scanLookupSchema, validateRequest } from '@/lib/validation-schemas';
 
 export type ScanResult = {
   type: 'LOT' | 'ITEM' | 'LOCATION' | 'UNKNOWN' | 'SSCC_ERROR';
@@ -220,10 +216,15 @@ async function resolveScannedCode(scannedString: string): Promise<ScanResult> {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { scannedCode } = ScanRequestSchema.parse(body);
+    
+    // Validate request body
+    const validationResult = validateRequest(scanLookupSchema, { code: body.scannedCode || body.code });
+    if (!validationResult.success) {
+      return NextResponse.json({ error: validationResult.error }, { status: 400 });
+    }
 
     // Rens input (fjern whitespace, konverter til uppercase hvis nødvendig)
-    const cleanedCode = scannedCode.trim();
+    const cleanedCode = validationResult.data.code.trim();
 
     const result = await resolveScannedCode(cleanedCode);
 

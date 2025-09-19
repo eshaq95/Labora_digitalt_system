@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { ToastProvider } from '@/components/ui/toast'
-import { AuthProvider, useAuth } from '@/lib/auth'
+import { AuthProvider } from '@/components/providers/auth-provider'
+import { useSession, signOut } from 'next-auth/react'
 import { ProfileDropdown } from '@/components/ui/profile-dropdown'
 import dynamic from 'next/dynamic'
 // import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -118,7 +119,37 @@ function AppContent({ Component, pageProps }: AppProps) {
   const [counts, setCounts] = useState({ pendingOrders: 0, pendingCounts: 0, lowStock: 0 })
   const [searchOpen, setSearchOpen] = useState(false)
   const router = useRouter()
-  const { user, logout, loading } = useAuth()
+  const { data: session, status } = useSession()
+  const user = session?.user
+  const loading = status === 'loading'
+
+  // Redirect to login if not authenticated (except for auth pages)
+  useEffect(() => {
+    if (status === 'loading') return // Still loading
+    
+    const isAuthPage = router.pathname.startsWith('/auth/')
+    if (!session && !isAuthPage) {
+      router.push('/auth/login')
+    }
+  }, [session, status, router])
+
+  // Show loading screen while checking authentication
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <p className="text-gray-600 dark:text-gray-400">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Don't render main app if not authenticated (except auth pages)
+  const isAuthPage = router.pathname.startsWith('/auth/')
+  if (!session && !isAuthPage) {
+    return null // Will redirect to login
+  }
 
   const handleScanSuccess = (result: ScanResult) => {
     setScanResult(result)
@@ -389,7 +420,7 @@ function AppContent({ Component, pageProps }: AppProps) {
 
               {/* Profile Dropdown */}
               {user && (
-                <ProfileDropdown user={user} onLogout={logout} />
+                <ProfileDropdown user={user} onLogout={() => signOut({ callbackUrl: '/auth/login' })} />
               )}
             </div>
           </div>

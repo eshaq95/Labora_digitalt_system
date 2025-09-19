@@ -1,11 +1,22 @@
 import { prisma } from '@/lib/prisma'
 import { requireAuth, requireRole } from '@/lib/auth-middleware'
 import { NextResponse } from 'next/server'
+import { paginationSchema, createOrderSchema, validateRequest } from '@/lib/validation-schemas'
 
 export const GET = requireAuth(async (req) => {
   const { searchParams } = new URL(req.url)
-  const page = parseInt(searchParams.get('page') || '1')
-  const limit = parseInt(searchParams.get('limit') || '25')
+  
+  // Validate pagination parameters
+  const paginationResult = validateRequest(paginationSchema, {
+    page: searchParams.get('page'),
+    limit: searchParams.get('limit'),
+  })
+  
+  if (!paginationResult.success) {
+    return NextResponse.json({ error: paginationResult.error }, { status: 400 })
+  }
+  
+  const { page, limit } = paginationResult.data
   const status = searchParams.get('status') || ''
   
   const skip = (page - 1) * limit
@@ -52,11 +63,14 @@ export const GET = requireAuth(async (req) => {
 export const POST = requireRole(['ADMIN', 'PURCHASER'])(async (req) => {
   try {
     const body = await req.json().catch(() => ({}))
-    const { supplierId, priority, expectedDate, notes, lines } = body || {}
     
-    if (!supplierId || !Array.isArray(lines) || lines.length === 0) {
-      return NextResponse.json({ error: 'Leverandør og minst én varelinje er påkrevd' }, { status: 400 })
+    // Validate request body
+    const validationResult = validateRequest(createOrderSchema, body)
+    if (!validationResult.success) {
+      return NextResponse.json({ error: validationResult.error }, { status: 400 })
     }
+    
+    const { supplierId, priority, expectedDate, notes, lines } = validationResult.data
 
     // Get user ID from auth middleware
     const userId = req.user?.userId
@@ -77,11 +91,11 @@ export const POST = requireRole(['ADMIN', 'PURCHASER'])(async (req) => {
         requestedBy: userId,
         notes: notes || null,
         status: 'REQUESTED',
-      lines: {
-        create: lines.map((line: any) => ({
+        lines: {
+        create: lines.map((line) => ({
           itemId: line.itemId,
-          quantityOrdered: Number(line.quantityOrdered),
-          unitPrice: line.unitPrice ? Number(line.unitPrice) : null,
+          quantityOrdered: line.quantityOrdered,
+          unitPrice: line.unitPrice || null,
           departmentId: line.departmentId || null,
           notes: line.notes || null,
           currency: 'NOK'
